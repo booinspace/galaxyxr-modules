@@ -1,0 +1,3 @@
+Galaxy XR no low-light toast (AZJ2): installs DISABLED. AZJ2 only.
+Read README.md before enabling; device behavior is not yet tested.
+Enable, then use one GXR Soft restart to set the threshold before SystemUI initializes.

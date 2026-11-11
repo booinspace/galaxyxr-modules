@@ -1,0 +1,3 @@
+Galaxy XR passthrough anywhere (AZJ2): installs DISABLED. AZJ2 only.
+Read README.md before enabling; device behavior is not yet tested.
+Enable and tap Action to start. No Soft restart is needed.

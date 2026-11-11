@@ -1,0 +1,6 @@
+id=gxr_passthrough_azj2
+name=Galaxy XR passthrough anywhere (AZJ2)
+version=0.1.0-azj2-experimental
+versionCode=1
+author=BreadDoesStuff; AZJ2 port by nathalie
+description=Experimental disabled AZJ2 port. Read README.md for activation, side effects and recovery.

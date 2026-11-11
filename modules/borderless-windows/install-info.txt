@@ -1,0 +1,6 @@
+Experimental AZJ2-only SystemUI hook. Installs disabled.
+Enable the module in KernelSU GXR, then choose Soft restart in Modules.
+Close and reopen an app window to see its border and resting caption pill disappear.
+Point at the top of the window to reveal the pill; the caption drag area remains.
+Disable the checkbox to show pills, then reopen windows to restore stock rims.
+See README.md for exact steps, limits, and recovery.

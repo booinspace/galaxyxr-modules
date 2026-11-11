@@ -1,0 +1,6 @@
+id=gxr_window_rotation
+name=Galaxy XR window rotation (AZJ2)
+version=0.1.2-experimental
+versionCode=3
+author=nathalie
+description=Standalone pitch, yaw and roll with same-node equality and owned rollback. Use combined 0.1.9 for curvature and borderless together; keep this module off in that setup. Enable then Action for isolated use; installs disabled.
