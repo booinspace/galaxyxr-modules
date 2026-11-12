@@ -4,12 +4,12 @@ from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-for name, identity in (
-    ('questlhsync', 'questlhsync_gxr'),
-    ('framebuffer10', 'gxr_framebuffer10'),
-    ('mvhevc-eye-fix', 'gxr_mvhevc_eye_fix'),
+for name, identity, version in (
+    ('questlhsync', 'gxr_questlhsync', '0.1.1'),
+    ('framebuffer10', 'gxr_framebuffer10', '0.1.0'),
+    ('mvhevc-eye-fix', 'gxr_mvhevc_eye_fix', '0.1.0'),
 ):
-    path = ROOT / f'releases/gxr-{name}-azj2-0.1.0-disabled.zip'
+    path = ROOT / f'releases/gxr-{name}-azj2-{version}-disabled.zip'
     with ZipFile(path) as archive:
         names = set(archive.namelist())
         assert len(names) == len(archive.namelist())

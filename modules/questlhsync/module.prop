@@ -1,6 +1,6 @@
-id=questlhsync_gxr
+id=gxr_questlhsync
 name=QuestLHSync Lighthouse alignment (AZJ2)
-version=0.1.0-azj2-experimental
-versionCode=10001
+version=0.1.1-azj2-experimental
+versionCode=10002
 author=stearnsbq and CreoleVR; AZJ2 port by booinspace
 description=Factory-calibrated Lighthouse alignment for SteamVR/Virtual Desktop. AZJ2 only. Does not provide native Android XR controller input. Installs disabled; enable and Action to start.

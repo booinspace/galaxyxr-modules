@@ -32,7 +32,7 @@ def main():
         work=Path(temporary)
         common=[str(compiler),'-O2','-Wall','-Wextra','-Werror','-Wl,-z,max-page-size=16384']
         builds={
-            'lhsyncd':['-Wno-unused-but-set-variable','-DMODULE_VERSION="gxr-azj2-0.1.0"',
+            'lhsyncd':['-Wno-unused-but-set-variable','-DMODULE_VERSION="gxr-azj2-0.1.1"',
                        '-DHS_TIMER_CLOCK=CLOCK_BOOTTIME','-DHS_LOG_CAPTURE_STATUS=1',
                        '-I'+str(UPSTREAM/'vendor/questlhsync'),
                        str(UPSTREAM/'vendor/questlhsync/lhsyncd.c'),str(UPSTREAM/'src/gxr.c')],
@@ -49,7 +49,7 @@ def main():
         for binary in builds:
             blob=(work/binary).read_bytes()
             if blob[:6]!=b'\x7fELF\x02\x01' or blob[18:20]!=b'\xb7\x00': raise ValueError('Expected arm64 ELF')
-            payload[binary]=blob
+            payload['bin/'+binary]=blob
         source=io.BytesIO()
         with tarfile.open(fileobj=source,mode='w') as archive:
             for p in sorted(UPSTREAM.rglob('*')):
@@ -66,7 +66,8 @@ def main():
                  'source':{str(p.relative_to(UPSTREAM)):hashlib.sha256(p.read_bytes()).hexdigest()
                            for p in sorted(UPSTREAM.rglob('*')) if p.is_file()}}
         payload['bin/build-info.json']=(json.dumps(receipt,indent=2,sort_keys=True)+'\n').encode()
-        runner(args.output/'gxr-questlhsync-azj2-0.1.0-disabled.zip',payload,executables=builds)
+        runner(args.output/'gxr-questlhsync-azj2-0.1.1-disabled.zip',payload,
+               executables=['bin/'+binary for binary in builds])
 
 
 if __name__=='__main__': main()

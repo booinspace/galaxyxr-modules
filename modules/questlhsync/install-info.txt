@@ -1,4 +1,5 @@
 AZJ2 only. Install disabled after KernelSU GXR reports Working.
+Disable and uninstall the old 0.1.0 entry before enabling this new module identity.
 Enable and tap Action. Install official QuestLHSync with Galaxy XR support
 on the SteamVR PC separately. Index/Tundra/Vive dongles stay on the PC.
 This aligns PC SteamVR tracking; it does not add native Home Space input.

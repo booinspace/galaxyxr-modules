@@ -11,9 +11,9 @@ SOURCE=/mnt/vendor/efs/device_profile.textproto
 mkdir -p "$OUT" || exit 1
 BEFORE=$(sha256sum "$SOURCE") || exit 1
 export LD_LIBRARY_PATH=/vendor/lib64:/system/lib64
-"$MODDIR/gxr-head-origin" > "$OUT/head-origin.txt" || exit $?
-"$MODDIR/gxr-prepare" "$SOURCE" "$OUT/head-origin.txt" "$OUT" || exit $?
-"$MODDIR/gxr-head-origin" > "$OUT/head-origin-after.txt" || exit $?
+"$MODDIR/bin/gxr-head-origin" > "$OUT/head-origin.txt" || exit $?
+"$MODDIR/bin/gxr-prepare" "$SOURCE" "$OUT/head-origin.txt" "$OUT" || exit $?
+"$MODDIR/bin/gxr-head-origin" > "$OUT/head-origin-after.txt" || exit $?
 AFTER=$(sha256sum "$SOURCE") || exit 1
 if [ "$BEFORE" != "$AFTER" ] || ! cmp -s "$OUT/head-origin.txt" "$OUT/head-origin-after.txt"; then
   echo 'Factory calibration changed during setup; retrying.' >&2

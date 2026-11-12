@@ -5,7 +5,7 @@ const status = document.getElementById('status');
 const save = document.getElementById('save');
 const reset = document.getElementById('reset');
 const exit = document.getElementById('exit');
-const command = 'sh /data/adb/modules/questlhsync_gxr/settings.sh ';
+const command = 'sh /data/adb/modules/gxr_questlhsync/settings.sh ';
 let sequence = 0;
 function busy(on) { slider.disabled = save.disabled = reset.disabled = on; }
 function display() { value.textContent = Number(slider.value).toFixed(1) + ' ms'; }

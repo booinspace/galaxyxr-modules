@@ -14,6 +14,15 @@ align the Lighthouse and headset tracking spaces. USB dongles for Index
 controllers, Tundra trackers and Vive Tracker 3.0 stay connected to SteamVR.
 See the [AZJ2 package guide](../modules/questlhsync/README.md).
 
+On the headset, **0.1.1** completed automatic factory calibration for all four
+tracking cameras and started `lhsyncd`; the user confirmed **RUNNING**. The
+0.1.0 startup failure was an installer mismatch: its upstream module ID selected
+the legacy installer, which removed the manifest's README and stripped native
+executable permissions. The corrected package uses `gxr_questlhsync` and keeps
+native helpers under `bin/`. Rebooting the old package cannot repair those
+files. Live camera observations, SteamVR alignment accuracy and controller
+tracking through Virtual Desktop remain unverified.
+
 That supports the Virtual Desktop/SteamVR path. It does not import the PC's
 controller poses, buttons or haptics into Android XR. The inspected server has
 no such receive protocol. The inspected AZJ2 CPM interfaces expose pairing,

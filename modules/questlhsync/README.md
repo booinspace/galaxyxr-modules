@@ -20,14 +20,26 @@ SteamVR has acquired an alignment lock.
 
 ## Install
 
+Use **0.1.1** or later. Version 0.1.0 kept the upstream module ID
+`questlhsync_gxr`, which selected KernelSU's legacy installer. That removed
+the README required by the checksum manifest and cleared the native helpers'
+executable permissions. The resulting `Payload checksum mismatch` happens
+before factory calibration or camera capture, so rebooting cannot repair it.
+The corrected ID is `gxr_questlhsync`; its WebUI uses the same corrected path.
+Native helpers now live under `bin/`, where the GXR installer grants executable
+permissions. The pinned upstream native sources remain unchanged.
+
 1. Install the PC driver from the official
    [QuestLHSync v1.28 release](https://github.com/CreoleVR/QuestLHSync/releases/tag/v1.28),
    which includes Galaxy XR support. Restart SteamVR as its guide requests.
    Disable other simultaneous alignment tools such as SpaceCalibrator or
    OpenVR-SpaceSync. Keep the Index and tracker dongles on the PC.
 2. On AZJ2, regain temporary root with DirtyFrag Autorun off. Check KernelSU
-   GXR says **Working**. Install `gxr-questlhsync-azj2-0.1.0-disabled.zip`.
-   It arrives disabled. Do not install the original AZF3 module alongside it.
+   GXR says **Working**. If 0.1.0 is installed, switch it off and uninstall it;
+   keep it off if removal is pending. Install
+   `gxr-questlhsync-azj2-0.1.1-disabled.zip`. This is a new module identity,
+   rather than an update to 0.1.0, and it arrives disabled. Keep only the
+   corrected module enabled. Do not enable the original AZF3 module alongside it.
 3. Enable this module and tap **Action**. Factory calibration is generated
    privately on the headset; no manual map or calibration download is needed.
    Action reports service status and exports its log. A full Android restart
@@ -56,8 +68,8 @@ Uncheck the module. Its supervisor stops its own daemon/camera process group
 and verifies cleanup. A root shell can also run:
 
 ```sh
-sh /data/adb/modules/questlhsync_gxr/action.sh off
-sh /data/adb/modules/questlhsync_gxr/action.sh status
+sh /data/adb/modules/gxr_questlhsync/action.sh off
+sh /data/adb/modules/gxr_questlhsync/action.sh status
 ```
 
 Wait for `GXR_UPDATE_STATE=STOCK` before updating or uninstalling. If cleanup
@@ -82,6 +94,7 @@ With Python 3 and Android NDK **28.2.13676358**:
 
 ```sh
 python3 scripts/build-questlhsync-azj2.py --ndk /path/to/android-ndk
+python3 tests/port-package.test.py
 python3 tests/questlhsync-package.test.py
 python3 tests/questlhsync-lifecycle.test.py
 ```

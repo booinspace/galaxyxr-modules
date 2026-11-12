@@ -12,4 +12,5 @@ QLHS_CALIBRATION_DIR=/dev/questlhsync-gxr/calibration
 QLHS_FACTORY_MAP="$QLHS_CALIBRATION_DIR/factory-map.bin"
 export QLHS_FW QLHS_MAX_EXPOSURE_NS QLHS_CALIBRATION_DIR QLHS_FACTORY_MAP
 export QLHS_CALIBRATED=1 QLHS_SENSOR_TIME=1
-exec "$MODDIR/lhsyncd" "$MODDIR"
+# The unmodified native adapter resolves gxr-lhsight relative to its argument.
+exec "$MODDIR/bin/lhsyncd" "$MODDIR/bin"
