@@ -2,8 +2,8 @@
 
 Experimental KernelSU GXR port inspired by
 [BreadDoesStuff's low-light module](https://github.com/BreadDoesStuff/galaxy-xr-modules/tree/93dcf733068d0f57d53b21b79f37b1f38f573e6f/modules/gxr-no-lowlight-toast).
-Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. The warning's behavior
-still needs a dark-room test on the headset.
+Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. The user tested the
+toast suppression on the AZJ2 headset and reports it working.
 
 Upstream disables the ambient light sensor pipeline. This AZJ2 port instead
 sets `ix.sysui.light_sensor.low_light_threshold=-Infinity` before SystemUI

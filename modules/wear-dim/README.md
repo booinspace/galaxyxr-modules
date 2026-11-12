@@ -68,8 +68,9 @@ room. It is intentionally broader than stock's dim-room-only countdown.
 Host policy tests cover the minute boundary, eye return, removal, sleep,
 unknown input and brightness bounds. A read-only ADB probe on the AZJ2 device
 confirmed type-34 sensing, the temporary-brightness API and eyes-present input
-without root. End-to-end dimming and restoration still require device testing
-with the installed module; API presence alone does not validate the feature.
+without root. The user tested the installed dimming module on the AZJ2 headset
+and reports it working. Restoration across every state and extended stability
+have not been independently verified.
 
 ## Build
 

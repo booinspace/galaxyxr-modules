@@ -26,11 +26,11 @@ consecutive GXR Soft restarts on the AZJ2 headset. The second device test
 confirmed curvature, rotation, rim/pill hiding, dragging and app input. The
 90-second startup gate is a workaround; the native startup crash that prompted
 it has not been fully diagnosed. Extended idle/wake stability remains
-unverified. The three BreadDoesStuff ports have passed build and host checks;
-their individual feature behavior still needs device validation.
+unverified. The user has also tested all three BreadDoesStuff ports and
+wear-aware dimming on the AZJ2 headset and reports them working.
 
 The experimental [wear-aware dimming module](modules/wear-dim/README.md) is a
-standalone process and needs device validation. The [firmware hold guide](docs/FIRMWARE-HOLD.md)
+standalone process. The [firmware hold guide](docs/FIRMWARE-HOLD.md)
 records the reversible OTA-agent block applied to keep the headset on AZJ2.
 
 ## Window controls

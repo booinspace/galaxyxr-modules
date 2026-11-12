@@ -2,15 +2,15 @@
 
 Experimental KernelSU GXR port of
 [BreadDoesStuff's mic gain module](https://github.com/BreadDoesStuff/galaxy-xr-modules/tree/93dcf733068d0f57d53b21b79f37b1f38f573e6f/modules/gxr-mic-gain-boost).
-Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. Audio behavior on this
-firmware has not been tested.
+Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. The user tested the
+mic boost on the AZJ2 headset and reports it working.
 
 The daemon listens for recording callbacks. It boosts `TX_DEC0 Volume` by 15
 steps while `virtualdesktop.android` records with `VOICE_PERFORMANCE` (source
 10). This port checks both package name and source; upstream checked source
 alone. Upstream describes the codec steps as 1 dB each. The default path value
-84 appears in AZJ2's mixer XML; root mixer access, actual gain and clipping
-still need a device test.
+84 appears in AZJ2's mixer XML. Actual gain and clipping have not been
+measured independently.
 
 Install the ZIP with **KernelSU GXR → Modules → Install from storage**, enable
 its checkbox, then tap **Action**. No Soft restart is needed. `RUNNING` means

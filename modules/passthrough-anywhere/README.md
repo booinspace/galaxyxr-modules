@@ -2,8 +2,8 @@
 
 Experimental KernelSU GXR port of
 [BreadDoesStuff's passthrough module](https://github.com/BreadDoesStuff/galaxy-xr-modules/tree/93dcf733068d0f57d53b21b79f37b1f38f573e6f/modules/gxr-passthrough-anywhere).
-Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. Live passthrough behavior
-has not been tested on this firmware.
+Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. The user tested
+passthrough on the AZJ2 headset and reports it working.
 
 The root daemon observes SystemUI's physical double-tap rejection in an
 immersive app, then temporarily places the global CPM passthrough layer above
@@ -36,8 +36,8 @@ Runtime configuration is created at
 Toast suppression is off by default, unlike upstream, because it suppresses
 more than the rejection message. If enabled, the original app-op is saved and
 restored rather than forcing `allow`. The passthrough cameras and their normal
-privacy indicator are expected to activate. Performance, focus transitions,
-camera visibility and input still need testing on the headset.
+privacy indicator are expected to activate. Performance, focus transitions
+and privacy-indicator behavior have not been measured independently.
 
 Turn the checkbox off to restore the owned camera state and optional toast
 setting. SystemUI's own later state request takes priority. Journals are tied

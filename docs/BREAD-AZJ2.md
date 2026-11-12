@@ -74,10 +74,11 @@ adb push releases/bread-azj2-api-probe.dex /data/local/tmp/
 adb shell 'CLASSPATH=/data/local/tmp/bread-azj2-api-probe.dex /system/bin/app_process /system/bin PortApiProbe'
 ```
 
-## First device tests
+## Device tests
 
-Feature behavior is not yet validated on the headset. Keep DirtyFrag Autorun
-off, and test one port at a time with the window injectors disabled.
+The user tested all three ports on the AZJ2 headset and reports them working.
+For repeat testing, keep DirtyFrag Autorun off and test one port at a time
+with the window injectors disabled.
 
 1. **Mic:** enable and start with Action, record in VD, then stop its capture.
    Compare audio at identical app settings. Test a second recorder separately
