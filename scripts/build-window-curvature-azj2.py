@@ -352,8 +352,8 @@ def integrate_features(work: Path, module: Path) -> None:
 def integrate_boundary(module: Path) -> None:
     """Align the stock boundary and corner selection with the rotated window."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.26-azj2")
-    replace(module / "module.prop", "versionCode=120", "versionCode=127")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.27-azj2")
+    replace(module / "module.prop", "versionCode=120", "versionCode=128")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
             "name=Galaxy XR Window Controls")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls with Action settings",
@@ -393,6 +393,36 @@ def integrate_boundary(module: Path) -> None:
             "                clearInterval(timer);")
     replace(agent, "log('STATE', {rotation:",
             "log('STATE', {boundary: boundary === null ? null : boundary.getDiagnostics(), rotation:")
+
+
+def integrate_home_pins(module: Path) -> None:
+    """Extend the Home pin cap and scroll its existing five-column panel."""
+    shutil.copyfile(ROOT / "scripts/curvature-home-pins-agent.mjs",
+                    module / "agent/curvature-home-pins-agent.mjs")
+    replace(module / "module.prop", "with 10x movement distance,",
+            "with 50 Home pins, 10x movement distance,")
+    agent = module / "agent/main.js"
+    replace(agent, "import {installBoundaryAlignment} from './curvature-boundary-agent.mjs';",
+            "import {installBoundaryAlignment} from './curvature-boundary-agent.mjs';\n"
+            "import {installHomePins} from './curvature-home-pins-agent.mjs';")
+    replace(agent, "let boundary = null;", "let boundary = null;\nlet homePins = null;")
+    replace(agent, "    try { if (boundary !== null) boundary.stop(); }",
+            "    try { if (homePins !== null) homePins.stop(); }\n"
+            "    catch (error) { log('HOME_PINS_RESTORE_ERROR', {error: String(error)}); }\n"
+            "    try { if (boundary !== null) boundary.stop(); }")
+    replace(agent, "                            refreshFeatures();",
+            "                            try { homePins = installHomePins(Java,\n"
+            "                                () => !stopped && nowMs() - lastSupervisor < 2500); }\n"
+            "                            catch (error) { log('HOME_PINS_UNAVAILABLE', {error: String(error)}); }\n"
+            "                            refreshFeatures();")
+    replace(agent, "                (boundary === null || boundary.isRestored())) {",
+            "                (boundary === null || boundary.isRestored()) &&\n"
+            "                (homePins === null || homePins.isRestored())) {")
+    replace(agent, "                if (boundary !== null) boundary.dispose();",
+            "                if (homePins !== null) homePins.dispose();\n"
+            "                if (boundary !== null) boundary.dispose();")
+    replace(agent, "log('STATE', {boundary:",
+            "log('STATE', {homePins: homePins === null ? null : homePins.getDiagnostics(), boundary:")
 
 
 def main() -> None:
@@ -523,10 +553,12 @@ def main() -> None:
             integrate_restart(work, module)
             integrate_features(work, module)
             integrate_boundary(module)
+            integrate_home_pins(module)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-boundary-abi.test.py")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-grab-features.test.mjs"),
-                            str(ROOT / "tests/window-settings-ui.test.mjs")], check=True)
+                            str(ROOT / "tests/window-settings-ui.test.mjs"),
+                            str(ROOT / "tests/home-pins.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-feature-settings.test.py")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/curvature-boot-recovery.test.py"),
                             str(module)], check=True)
@@ -537,7 +569,7 @@ def main() -> None:
             subprocess.run([sys.executable, str(ROOT / "tests/rotation-controller-host.test.py"),
                             "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
             subprocess.run(["node", str(ROOT / "tests/curvature-combined-lifecycle.mjs"),
-                            str(module / "agent/main.js"), "--rotation", "--boundary"], check=True)
+                            str(module / "agent/main.js"), "--rotation", "--boundary", "--home-pins"], check=True)
             math_classes = Path(temporary) / "rotation-tests"
             subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
                             "-proc:none", "-failOnWarning", "-d", str(math_classes),
@@ -568,7 +600,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.26-azj2" if args.integrated_rotation else
+        version = ("0.1.27-azj2" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],

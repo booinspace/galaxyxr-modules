@@ -23,6 +23,10 @@ undetermined. Extended idle/wake stability remains unverified.
 This is a **KernelSU GXR module ZIP**. It requires an active temporary root
 session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 
+The **0.1.27 candidate** adds [up to 50 Home pins](HOME-PINS.md), with the same
+five-column tiles and panel size. Scroll vertically above 10 pinned apps.
+This addition needs a headset test; the existing window features are retained.
+
 ## Install
 
 1. Confirm KernelSU GXR reports **Working**. Keep separate Borderless and
@@ -42,7 +46,7 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The current package is `gxr-window-curvature-0.1.26-azj2-disabled.zip`.
+The Home pin candidate is `gxr-window-curvature-0.1.27-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
 Boundary alignment is included in the combined build. The tested 0.1.23
 artifact remains available in the repository as a checkpoint.
@@ -298,7 +302,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.26-azj2-disabled.zip`
+The output is `gxr-window-curvature-0.1.27-azj2-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
