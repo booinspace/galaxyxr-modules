@@ -352,8 +352,8 @@ def integrate_features(work: Path, module: Path) -> None:
 def integrate_boundary(module: Path) -> None:
     """Align the stock boundary and corner selection with the rotated window."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.25-azj2")
-    replace(module / "module.prop", "versionCode=120", "versionCode=126")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.26-azj2")
+    replace(module / "module.prop", "versionCode=120", "versionCode=127")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
             "name=Galaxy XR Window Controls")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls with Action settings",
@@ -568,7 +568,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.25-azj2" if args.integrated_rotation else
+        version = ("0.1.26-azj2" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],

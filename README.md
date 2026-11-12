@@ -23,9 +23,11 @@ AZJ2 with **0.1.23**. Version **0.1.24** keeps that runtime. A follow-up found
 that tilted resize motion can run in the wrong direction. See
 [feature settings and wrist grabs](docs/CURVATURE.md#feature-settings-and-wrist-grabs).
 
-The **0.1.25 candidate** corrects the resize solver's projection frame, widens
+Version **0.1.25** corrects the resize solver's projection frame, widens
 the stock movement-distance limit tenfold and permits updates after verified
-clean shutdown. These changes pass host checks and need headset validation.
+clean shutdown. The user confirmed extended reach and correct tilted resize
+direction on AZJ2. The **0.1.26 candidate** keeps that runtime and increments
+the version to validate an in-place update; live replacement remains unverified.
 Updating from 0.1.24 or earlier can still require one final full reboot because
 the old package's shutdown guard runs before replacement.
 

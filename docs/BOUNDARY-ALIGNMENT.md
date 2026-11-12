@@ -10,8 +10,9 @@ resize motion. Earlier checks covered hand rotation
 in all three axes, retained orientation after release, app input, curvature,
 rim/pill hiding, dragging and planned Soft restart resume. Version 0.1.24
 removes test labels from the package metadata and keeps the 0.1.23 runtime.
-The 0.1.25 candidate fixes the solver frame and adds tenfold movement distance;
-those changes need a headset test.
+Version 0.1.25 fixes the solver frame and adds tenfold movement distance.
+The user confirmed extended reach and correct tilted resize direction on AZJ2.
+Version 0.1.26 retains that runtime for the pending live-update check.
 Extended idle/wake stability and other firmware remain unverified.
 
 ## Scene ownership and resizing
@@ -63,7 +64,7 @@ if cleanup is uncertain.
 
 Use the [combined build command](CURVATURE.md#build) with
 `--integrated-borderless --integrated-rotation`. The output is
-`gxr-window-curvature-0.1.25-azj2-disabled.zip` and its `.sha256` sidecar.
+`gxr-window-curvature-0.1.26-azj2-disabled.zip` and its `.sha256` sidecar.
 The former `--experimental-boundary` option is accepted for older build
 commands but is no longer needed.
 

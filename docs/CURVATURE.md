@@ -9,11 +9,14 @@ one Java-owned menu. The user confirmed boundary alignment and working resize
 corner selection on AZJ2 with 0.1.23. A follow-up found reversed resize motion
 under rotation; selectable corners alone did not establish correct resizing.
 
-The 0.1.25 candidate corrects the resize solver's coordinate frame and extends
+Version 0.1.25 corrects the resize solver's coordinate frame and extends
 the stock maximum movement distance tenfold. The stock 5 m fallback becomes
 50 m; an explicitly configured maximum is multiplied by ten. The near limit,
-movement sensitivity and ordinary app input are unchanged. These additions
-still need a headset test.
+movement sensitivity and ordinary app input are unchanged. The user confirmed
+movement beyond the old limit and correct outward/inward tilted resizing on
+AZJ2. This confirms the reported behavior, not a measured 50 m placement.
+Version 0.1.26 keeps the same runtime and advances the version for the live
+update check; replacement and reload without a full reboot remain unverified.
 
 Planned GXR Soft restart resume has been verified on the headset. The 90-second
 startup gate is a workaround for a native startup crash whose cause remains
@@ -40,7 +43,7 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The candidate package is `gxr-window-curvature-0.1.25-azj2-disabled.zip`.
+The update-check package is `gxr-window-curvature-0.1.26-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
 Boundary alignment is included in the combined build. The tested 0.1.23
 artifact remains available in the repository as a checkpoint.
@@ -294,7 +297,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.25-azj2-disabled.zip`
+The output is `gxr-window-curvature-0.1.26-azj2-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
