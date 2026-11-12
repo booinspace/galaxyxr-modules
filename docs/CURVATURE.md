@@ -4,19 +4,17 @@ The combined module adds curvature, borderless app windows, a hover-only
 caption pill, hand positional rotation and pitch/yaw/roll sliders to ordinary
 Home Space Android windows. Stock dragging moves the window; turning the
 grabbing hand rotates it in all three axes. The movement outline and resize
-corners follow that orientation. It uses one supervised Frida injector and
-one Java-owned menu. The user confirmed boundary alignment and working resize
-corner selection on AZJ2 with 0.1.23. A follow-up found reversed resize motion
-under rotation; selectable corners alone did not establish correct resizing.
+corners follow that orientation. Resize motion is projected into the tilted
+window's frame, so outward motion grows the window and inward motion shrinks
+it. The module uses one supervised Frida injector and one Java-owned menu.
 
-Version 0.1.25 corrects the resize solver's coordinate frame and extends
-the stock maximum movement distance tenfold. The stock 5 m fallback becomes
-50 m; an explicitly configured maximum is multiplied by ten. The near limit,
+The stock maximum movement distance is extended tenfold. The stock 5 m fallback
+becomes 50 m; an explicitly configured maximum is multiplied by ten. The near limit,
 movement sensitivity and ordinary app input are unchanged. The user confirmed
 movement beyond the old limit and correct outward/inward tilted resizing on
 AZJ2. This confirms the reported behavior, not a measured 50 m placement.
-Version 0.1.26 keeps the same runtime and advances the version for the live
-update check; replacement and reload without a full reboot remain unverified.
+Version 0.1.26 uses the device-tested 0.1.25 runtime. In-place installation
+without a full reboot is confirmed; the subsequent reload check is pending.
 
 Planned GXR Soft restart resume has been verified on the headset. The 90-second
 startup gate is a workaround for a native startup crash whose cause remains
@@ -36,14 +34,15 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
    disabled. Use an in-place update; if the existing module is pending
    deletion, tap **Undo**, leave it off, then retry installation.
 3. Enable **Galaxy XR Window Controls** and tap its
-   **Action** once to start it. Future GXR Soft restarts use the coordinated
-   handoff described below and restart the module automatically.
+   **Action** once to start it. After an update, if Action requests a Soft
+   restart, use one GXR **Soft restart**. Future GXR Soft restarts use the
+   coordinated handoff described below and restart the module automatically.
 4. Wait for **App window setup: ready** in Action settings, fully close an
    ordinary app window and launch it again.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The update-check package is `gxr-window-curvature-0.1.26-azj2-disabled.zip`.
+The current package is `gxr-window-curvature-0.1.26-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
 Boundary alignment is included in the combined build. The tested 0.1.23
 artifact remains available in the repository as a checkpoint.
@@ -67,8 +66,10 @@ replacement. Reinjecting into the same SystemUI process is still refused.
 
 Failed cleanup, an unexpected stop or an existing quarantine still blocks
 replacement and requires recovery. Pending removal/update markers and same
-or lower version codes remain rejected. The same-boot update path has host
-coverage; live replacement still needs a headset check.
+or lower version codes remain rejected. The 0.1.25 → 0.1.26 installation was
+confirmed on the headset in the same full boot. The old runtime acknowledged
+cleanup and detached; the new version reported that one Soft restart was
+required. Validation after that restart is pending.
 
 ## After a cold boot
 

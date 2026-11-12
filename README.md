@@ -8,8 +8,8 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.24](https://github.com/booinspace/galaxyxr-modules/raw/refs/heads/main/releases/gxr-window-curvature-0.1.24-azj2-disabled.zip)
-and its [checksum](releases/gxr-window-curvature-0.1.24-azj2-disabled.zip.sha256).
+Download [Window Controls 0.1.26](https://github.com/booinspace/galaxyxr-modules/raw/refs/heads/main/releases/gxr-window-curvature-0.1.26-azj2-disabled.zip)
+and its [checksum](releases/gxr-window-curvature-0.1.26-azj2-disabled.zip.sha256).
 Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
 
@@ -17,17 +17,16 @@ Window Controls now includes **hand positional rotation**: grab a window to
 move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
 settings for curvature, borderless windows, rotation and rotation while
 grabbing. Grab rotation is off by default; the sliders remain available.
-The movement outline and resize corners follow the rotated window. The user
-confirmed hand rotation, boundary alignment and selectable resize corners on
-AZJ2 with **0.1.23**. Version **0.1.24** keeps that runtime. A follow-up found
-that tilted resize motion can run in the wrong direction. See
+The movement outline, resize corners and resize motion follow the rotated
+window. The maximum movement distance is ten times the stock limit; the
+near limit stays unchanged. The user confirmed extended reach and correct
+outward/inward resizing while tilted on AZJ2. See
 [feature settings and wrist grabs](docs/CURVATURE.md#feature-settings-and-wrist-grabs).
 
-Version **0.1.25** corrects the resize solver's projection frame, widens
-the stock movement-distance limit tenfold and permits updates after verified
-clean shutdown. The user confirmed extended reach and correct tilted resize
-direction on AZJ2. The **0.1.26 candidate** keeps that runtime and increments
-the version to validate an in-place update; live replacement remains unverified.
+Updates stop the existing runtime cleanly before replacing the package.
+Enable the new version, tap Action and use one GXR Soft restart when requested.
+The 0.1.25 → 0.1.26 installation completed without a full reboot; validation
+of the replacement runtime after that restart is pending.
 Updating from 0.1.24 or earlier can still require one final full reboot because
 the old package's shutdown guard runs before replacement.
 
@@ -37,7 +36,7 @@ and resize input intact.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
-| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, aligned movement/resize boundaries, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, boundary alignment and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
+| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, aligned movement/resize boundaries, 10× movement distance, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, boundary alignment and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
 | Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
 | Mic gain boost | Action UI with live 0–40 step gain control, global or Virtual Desktop-only scope, and a local 10-second recording/playback test | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
@@ -90,8 +89,9 @@ restored window. The rim and resting pill hide; pointing at the top reveals
 the pill and retains dragging. The app's top menu contains Curve/Flatten,
 curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
-The current package is `gxr-window-curvature-0.1.24-azj2-disabled.zip`. The build includes an
-ART/CMC bridge patch and checks the exact ART library hash before attachment.
+The current package is `gxr-window-curvature-0.1.26-azj2-disabled.zip`. The build
+includes an ART/CMC bridge patch and checks the exact ART library hash before
+attachment.
 Recovery is built in: after a cold boot, module startup preserves diagnostics
 and acknowledges the previous boot's session automatically. **Action** starts
 the enabled module if needed and exports logs. Same-boot quarantine stays

@@ -4,15 +4,14 @@ Window Controls keeps Samsung's movement outline and resize corners aligned
 with a window rotated by the sliders or by hand. It is included in the
 combined build; there is no separate boundary module to install.
 
-On 12 November 2026 the user confirmed boundary alignment on AZJ2, followed
-by selectable rotated resize corners with 0.1.23. A later test found reversed
-resize motion. Earlier checks covered hand rotation
-in all three axes, retained orientation after release, app input, curvature,
-rim/pill hiding, dragging and planned Soft restart resume. Version 0.1.24
-removes test labels from the package metadata and keeps the 0.1.23 runtime.
-Version 0.1.25 fixes the solver frame and adds tenfold movement distance.
-The user confirmed extended reach and correct tilted resize direction on AZJ2.
-Version 0.1.26 retains that runtime for the pending live-update check.
+The user confirmed boundary alignment, hand rotation in all three axes,
+retained orientation after release, app input, curvature, rim/pill hiding,
+dragging and planned Soft restart resume on AZJ2. Version 0.1.25 also passed
+the extended-reach and correct tilted-resize-direction checks. Its exported
+log records 163 corrected resize frames and a movement maximum of 5 m → 50 m;
+the exact physical distance was not measured. Version 0.1.26 retains that
+runtime. Its in-place install succeeded without a full reboot; the reload
+check is pending.
 Extended idle/wake stability and other firmware remain unverified.
 
 ## Scene ownership and resizing
