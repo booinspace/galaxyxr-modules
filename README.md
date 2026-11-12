@@ -44,6 +44,7 @@ and resize input intact.
 | QuestLHSync alignment (experimental) | Aligns PC SteamVR Lighthouse devices with Galaxy XR over Virtual Desktop; does not inject native Home Space controllers | [stearnsbq](https://github.com/stearnsbq/questlhsync-galaxy-xr) and [CreoleVR](https://github.com/CreoleVR/QuestLHSync); AZJ2 build/lifecycle by [booinspace](https://github.com/booinspace) | [Lighthouse guide](modules/questlhsync/README.md) |
 | Framebuffer10 (experimental) | Requests 10-bit SDR output with locally generated compositor shader corrections | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/main/modules/framebuffer10); AZJ2 port by [booinspace](https://github.com/booinspace) | [Colour output guide](modules/framebuffer10/README.md) |
 | MV-HEVC eye fix (experimental) | Corrects left-primary spatial-video eye order in Gallery XR; does not change gaze tracking | [AngelDark92](https://github.com/AngelDark92), via [4uva4ek's repository](https://github.com/4uva4ek/galaxyxr-modules/tree/main/modules/mvhevc-eye-fix); AZJ2 lifecycle by [booinspace](https://github.com/booinspace) | [Video guide](modules/mvhevc-eye-fix/README.md) |
+| Root face tracking (experimental) | Vendor perception relay for per-eye gaze, pupils, face and tongue; separate Windows receiver | [compdoge](https://github.com/compdoge/gxr-root-ft); AZJ2 trace isolation and lifecycle by [booinspace](https://github.com/booinspace) | [Headset guide](modules/root-face-tracking/README.md), [PC receivers](companions/face-tracking/README.md) |
 | Virtual Desktop gaze fix (Windows companion) | VRCFaceTracking DLL correcting avatar gaze when the head rolls; install on the PC | [SinonVT](https://github.com/SinonVT/GalaxyXR-EyeTracking-Fix-Virtual-Desktop) and [guygodin](https://github.com/guygodin/VirtualDesktop.VRCFaceTracking); numeric fix/build by [booinspace](https://github.com/booinspace) | [PC install guide](companions/vd-eye-fix/README.md) |
 
 The three new experimental headset ports have AZJ2 identity and host checks,
@@ -108,6 +109,9 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 - [QuestLHSync AZJ2 build](scripts/build-questlhsync-azj2.py)
 - [Framebuffer10 AZJ2 build](scripts/build-framebuffer10-azj2.py)
 - [MV-HEVC AZJ2 packaging](scripts/build-mvhevc-azj2.py)
+- [Root face tracking AZJ2 build](scripts/build-root-face-tracking-azj2.py)
+- [Windows face tracking receiver installer](companions/face-tracking/README.md)
+- [One-click Steam Link APK builder for Windows](companions/steamlink/README.md)
 - [Virtual Desktop Windows companion build](scripts/build-vd-eye-fix.ps1)
 - [Sources, credits and licensing](docs/SOURCES.md)
 

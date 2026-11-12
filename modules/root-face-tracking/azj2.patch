@@ -1,0 +1,260 @@
+--- a/headset/gxr_alvr.c
++++ b/headset/gxr_alvr.c
+@@ -63,9 +63,14 @@
+ 
+ /* Reported in the startup log and by --version, so the running build is always
+    identifiable (avoids "is the new binary actually live?" confusion). */
+-#define GXR_VERSION "1.4.0"
+-
+-#define TRACE "/sys/kernel/tracing"
++#define GXR_VERSION "1.4.0-azj2.1"
++
++#ifndef TRACE_ROOT
++#define TRACE_ROOT "/sys/kernel/tracing"
++#endif
++#define TRACE_GROUP "gxr_ft_azj2"
++#define TRACE TRACE_ROOT "/instances/" TRACE_GROUP
++#define UPROBE_EVENTS TRACE_ROOT "/uprobe_events"
+ /* Per-CPU trace ring buffer. About 330 events/s can be roughly 20 KB/s of
+    binary records in total; if most probes land on one CPU, a long relay pause
+    could fill its 1024 KB ring. The reader normally drains every 16 ms, but a
+@@ -324,43 +329,37 @@
+     snprintf(b, sizeof(b), "%d\n", RING_KB);
+     write_file(TRACE "/buffer_size_kb", b);
+ }
++static int remove_event(const char *name);
+ static void tracefs_cleanup(void) {
+-    /* O_TRUNC clear + disable: a bare "\n" write does not clear here. */
++    /* Only this port's private instance and five owned events may be changed. */
++    static const char *names[] = { "pten", "dir", "bs", "jaw", "tongue" };
+     write_file(TRACE "/tracing_on", "0\n");
+-    char dirpath[64];
+-    snprintf(dirpath, sizeof(dirpath), "%s/events/uprobes", TRACE);
+-    DIR *d = opendir(dirpath);
+-    if (d) {
+-        struct dirent *e; char en[400];
+-        while ((e = readdir(d)) != NULL) {
+-            if (e->d_name[0] == '.') continue;
+-            snprintf(en, sizeof(en), "%s/%s/enable", dirpath, e->d_name);
+-            write_file(en, "0\n");
+-        }
+-        closedir(d);
+-    }
+-    int fd = open(TRACE "/uprobe_events", O_WRONLY | O_TRUNC);
+-    if (fd >= 0) close(fd);
++    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
++        char path[160];
++        snprintf(path, sizeof(path), "%s/events/%s/%s/enable", TRACE, TRACE_GROUP, names[i]);
++        write_file(path, "0\n");
++        remove_event(names[i]);
++    }
+ }
+ static int remove_event(const char *name) {
+     char spec[128];
+-    snprintf(spec, sizeof(spec), "-:uprobes/%s\n", name);
+-    int fd = open(TRACE "/uprobe_events", O_WRONLY | O_APPEND);
++    snprintf(spec, sizeof(spec), "-:" TRACE_GROUP "/%s\n", name);
++    int fd = open(UPROBE_EVENTS, O_WRONLY | O_APPEND);
+     if (fd < 0) return -1;
+     ssize_t w = write(fd, spec, strlen(spec));
+     close(fd);
+     return (w == (ssize_t)strlen(spec)) ? 0 : -1;
+ }
+ static int create_event(const char *name, const char *spec) {
+-    if (write_file(TRACE "/uprobe_events", spec) != 0) {
++    if (write_file(UPROBE_EVENTS, spec) != 0) {
+         remove_event(name);
+-        if (write_file(TRACE "/uprobe_events", spec) != 0) {
++        if (write_file(UPROBE_EVENTS, spec) != 0) {
+             fprintf(stderr, "gxr_alvr: create %s failed: %s\n", name, strerror(errno));
+             return -1;
+         }
+     }
+     char en[128];
+-    snprintf(en, sizeof(en), "%s/events/uprobes/%s/enable", TRACE, name);
++    snprintf(en, sizeof(en), "%s/events/" TRACE_GROUP "/%s/enable", TRACE, name);
+     if (write_file(en, "1\n") != 0) {
+         fprintf(stderr, "gxr_alvr: enable %s failed: %s\n", name, strerror(errno));
+         return -1;
+@@ -370,7 +369,7 @@
+ static int arm_pupil(const char *plugin, unsigned long off) {
+     char spec[512];
+     snprintf(spec, sizeof(spec),
+-             "p:pten %s:0x%lx idx=%%x20 v0=+0x0(%%x10):u32 v1=+0x4(%%x10):u32 "
++             "p:" TRACE_GROUP "/pten %s:0x%lx idx=%%x20 v0=+0x0(%%x10):u32 v1=+0x4(%%x10):u32 "
+              "v2=+0x8(%%x10):u32 v3=+0xc(%%x10):u32 v4=+0x10(%%x10):u32 v5=+0x14(%%x10):u32\n",
+              plugin, off);
+     return create_event("pten", spec);
+@@ -378,13 +377,13 @@
+ static int arm_eyedir(const char *plugin, unsigned long off) {
+     char spec[512];
+     snprintf(spec, sizeof(spec),
+-             "p:dir %s:0x%lx e=%%x21 x=+0x0(%%x0):u32 y=+0x4(%%x0):u32 z=+0x8(%%x0):u32\n",
++             "p:" TRACE_GROUP "/dir %s:0x%lx e=%%x21 x=+0x0(%%x0):u32 y=+0x4(%%x0):u32 z=+0x8(%%x0):u32\n",
+              plugin, off);
+     return create_event("dir", spec);
+ }
+ static int arm_face(const char *plugin, unsigned long off) {
+     char spec[4096];
+-    size_t used = (size_t)snprintf(spec, sizeof(spec), "p:bs %s:0x%lx ", plugin, off);
++    size_t used = (size_t)snprintf(spec, sizeof(spec), "p:" TRACE_GROUP "/bs %s:0x%lx ", plugin, off);
+     for (int i = 0; i < FACE_N && used + 32 < sizeof(spec); i++) {
+         int w = snprintf(spec + used, sizeof(spec) - used, "f%d=+%d(%%x1):u32 ", i, i * 4);
+         if (w < 0) break;
+@@ -399,7 +398,7 @@
+ static int arm_jaw(const char *plugin, unsigned long off) {
+     char spec[512];
+     snprintf(spec, sizeof(spec),
+-             "p:jaw %s:0x%lx jaw=+0x60(%%x21):u32 tout=+0xfc(%%x21):u32 "
++             "p:" TRACE_GROUP "/jaw %s:0x%lx jaw=+0x60(%%x21):u32 tout=+0xfc(%%x21):u32 "
+              "tup=+0x108(%%x21):u32 tdn=+0x10c(%%x21):u32\n",
+              plugin, off);
+     return create_event("jaw", spec);
+@@ -407,7 +406,7 @@
+ /* 11-D predicted_local_tongue_expression: 11 float32 at +252(%x1)..+292(%x1). */
+ static int arm_tongue(const char *plugin, unsigned long off) {
+     char spec[1024];
+-    size_t used = (size_t)snprintf(spec, sizeof(spec), "p:tongue %s:0x%lx ", plugin, off);
++    size_t used = (size_t)snprintf(spec, sizeof(spec), "p:" TRACE_GROUP "/tongue %s:0x%lx ", plugin, off);
+     for (int i = 0; i < TONGUE_N && used + 20 < sizeof(spec); i++) {
+         int w = snprintf(spec + used, sizeof(spec) - used, "t%d=+%d(%%x1):u32 ", i, 252 + i * 4);
+         if (w < 0) break;
+@@ -420,14 +419,8 @@
+     return create_event("tongue", spec);
+ }
+ static void disarm_all(void) {
+-    write_file(TRACE "/tracing_on", "0\n");
+-    write_file(TRACE "/events/uprobes/pten/enable", "0\n");
+-    write_file(TRACE "/events/uprobes/dir/enable", "0\n");
+-    write_file(TRACE "/events/uprobes/bs/enable", "0\n");
+-    write_file(TRACE "/events/uprobes/jaw/enable", "0\n");
+-    write_file(TRACE "/events/uprobes/tongue/enable", "0\n");
+-    int fd = open(TRACE "/uprobe_events", O_WRONLY | O_TRUNC);
+-    if (fd >= 0) close(fd);
++    tracefs_cleanup();
++    rmdir(TRACE);
+ }
+ 
+ /* Single-instance guard. An flock on LOCK_PATH makes the first start win and a
+@@ -438,10 +431,10 @@
+    (that path frees the lock, then the new process acquires it). Returns 0 on
+    success, -1 if another live instance holds the lock. */
+ static int acquire_lock(void) {
+-    int fd = open(LOCK_PATH, O_CREAT | O_RDWR, 0600);
++    int fd = open(LOCK_PATH, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0600);
+     if (fd < 0) {
+-        fprintf(stderr, "gxr_alvr: lock %s: %s (continuing unlocked)\n", LOCK_PATH, strerror(errno));
+-        return 0;   /* fail soft: not being able to lock must not stop the relay */
++        fprintf(stderr, "gxr_alvr: lock %s: %s (refusing to start)\n", LOCK_PATH, strerror(errno));
++        return -1;
+     }
+     if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+         fprintf(stderr, "gxr_alvr: another instance is already running (lock %s held)\n", LOCK_PATH);
+@@ -681,12 +674,12 @@
+ }
+ static int probe_snapshot(unsigned *mask) {
+     if (mask) *mask = 0;
+-    int fd = open(TRACE "/uprobe_events", O_RDONLY);
++    int fd = open(UPROBE_EVENTS, O_RDONLY);
+     if (fd < 0) return -1;
+     static const char *names[PROBE_N] = { "pten", "dir", "bs", "jaw", "tongue" };
+     char key[PROBE_N][24];
+     for (int i = 0; i < PROBE_N; i++)
+-        snprintf(key[i], sizeof(key[i]), "uprobes/%s ", names[i]);
++        snprintf(key[i], sizeof(key[i]), TRACE_GROUP "/%s ", names[i]);
+     unsigned found = 0;
+     char buf[4096 + PROBE_CARRY + 1];
+     size_t carry = 0;
+@@ -749,7 +742,7 @@
+    the heartbeat must not do it. */
+ static int probe_enable_value(const char *name) {
+     char p[128], c = 0;
+-    snprintf(p, sizeof(p), "%s/events/uprobes/%s/enable", TRACE, name);
++    snprintf(p, sizeof(p), "%s/events/" TRACE_GROUP "/%s/enable", TRACE, name);
+     int f = open(p, O_RDONLY | O_CLOEXEC);
+     if (f < 0) return -1;
+     ssize_t n;
+@@ -874,7 +867,7 @@
+ 
+        Safety rules that matter more than a fast recovery:
+        - a read FAILURE is unknown state, never a reason to clear anything;
+-       - clearing uprobe_events drops EVERY uprobe on the device, so it needs
++       - resetting our event group drops only this relay's five probes, so it needs
+          confirmed evidence and never runs on a read error.
+        This is the ONLY place in the loop that samples tracefs: the heartbeat
+        reports the cached snapshot instead of reaching into it itself. */
+@@ -2444,6 +2437,14 @@
+ }
+ 
+ int main(int argc, char **argv) {
++    if (argc == 2 && !strcmp(argv[1], "--cleanup")) {
++        if (acquire_lock() < 0) return 5;
++        tracefs_cleanup();
++        unsigned mask = 0;
++        if (probe_snapshot(&mask) != 0 || mask != 0) return 1;
++        if (rmdir(TRACE) != 0 && errno != ENOENT) return 1;
++        return 0;
++    }
+     const char *pc = NULL;
+     int port = 41463;
+     unsigned long pupil_off = DEFAULT_PUPIL_OFFSET, eyedir_off = DEFAULT_EYEDIR_OFFSET;
+@@ -2506,6 +2507,21 @@
+         else { fprintf(stderr, "gxr_alvr: unknown arg: %s\n", argv[i]); usage(stderr, argv[0]); return 2; }
+     }
+ 
++    /* AZJ2 offsets are verified as a set; the module cannot redirect probes. */
++    if (pupil_off != DEFAULT_PUPIL_OFFSET || eyedir_off != DEFAULT_EYEDIR_OFFSET ||
++        face_off != DEFAULT_FACE_BS_OFFSET || jaw_off != DEFAULT_JAW_OFFSET ||
++        tongue_off != DEFAULT_TONGUE_OFFSET || strcmp(eye_plugin, EYE_PLUGIN) ||
++        strcmp(face_plugin, FACE_PLUGIN)) return 2;
++    struct in_addr pinned;
++    if (!pc || inet_pton(AF_INET, pc, &pinned) != 1 || port != 41463 || mirror_port) {
++        fprintf(stderr, "gxr_alvr: this port requires an explicit --pc and UDP 41463\n");
++        return 2;
++    }
++    uint32_t address = ntohl(pinned.s_addr);
++    if ((address >> 24) == 0 || (address >> 24) >= 224 ||
++        (!selftest && (address >> 24) == 127) ||
++        (address & 255) == 0 || (address & 255) == 255) return 2;
++
+     /* Dilation range: the state files first, then an explicit --dil-min/--dil-max
+        override. Explicit values ARE the lock (that is the "type the numbers and
+        stick with them" path); the files are what the WebUI's Lock/Unlock writes.
+@@ -2631,16 +2647,21 @@
+        from an exported log (parent chain, cgroup, oom_score_adj). */
+     log_process_context();
+ 
++    if (mkdir(TRACE, 0700) != 0 && errno != EEXIST) {
++        fprintf(stderr, "gxr_alvr: private trace instance unavailable: %s\n", strerror(errno));
++        return 3;
++    }
++    if (atexit(disarm_all) != 0) return 3;
+     tracefs_cleanup();
+     set_ring_kb();
+-    /* The initial cleanup is itself a destructive device-wide operation, so the
++    /* The initial cleanup is itself a private-instance operation, so the
+        re-arm floor clock starts here: a probe found missing by the first health
+-       check must still wait REARM_MIN_MS before another device-wide clear. */
++       check must still wait REARM_MIN_MS before another owned-probe reset. */
+     g_lastRearmMs = now_ms();
+     g_pupil_off = pupil_off; g_eyedir_off = eyedir_off;
+     g_face_off = face_off; g_jaw_off = jaw_off; g_tongue_off = tongue_off;
+     g_eye_plugin = eye_plugin; g_face_plugin = face_plugin;
+-    usleep(200000);   /* let any just-pkill'd peer release tracefs */
++    usleep(200000);   /* allow this instance to settle */
+     int rc_pten = arm_pupil(eye_plugin, pupil_off);
+     if (rc_pten != 0) return 3;
+     int rc_dir = arm_eyedir(eye_plugin, eyedir_off);
+@@ -2651,7 +2672,11 @@
+     if (rc_jaw != 0) fprintf(stderr, "gxr_alvr: jaw probe not armed (continuing)\n");
+     int rc_tongue = arm_tongue(face_plugin, tongue_off);
+     if (rc_tongue != 0) fprintf(stderr, "gxr_alvr: tongue probe not armed (continuing)\n");
+-    write_file(TRACE "/tracing_on", "1\n");
++    if (rc_dir != 0 || rc_face != 0 || rc_jaw != 0 || rc_tongue != 0) {
++        fprintf(stderr, "gxr_alvr: AZJ2 port requires all five probes; stopping\n");
++        return 3;
++    }
++    if (write_file(TRACE "/tracing_on", "1\n") != 0) return 3;
+     /* The required set is the set of arm calls that returned success - never the
+        event-list snapshot. The snapshot is only an observational cache for the
+        heartbeat; if it cannot be read now, the probes that did arm are still

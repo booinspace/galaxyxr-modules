@@ -140,3 +140,51 @@ is not used here.
 It adds no SystemUI injector and includes no proprietary firmware binaries.
 The [firmware hold](FIRMWARE-HOLD.md) uses the device's existing package-manager
 controls for the two verified Samsung OTA agents.
+
+## Root face tracking and Steam Link receivers
+
+[compdoge/gxr-root-ft](https://github.com/compdoge/gxr-root-ft/tree/4d4dea8f7deacafc6859ab3d7cb98f513550402e),
+commit `4d4dea8f7deacafc6859ab3d7cb98f513550402e` (1.4.0), supplies the MIT
+root perception sender, gaze/pupil processing and tongue model. Pinned source,
+MIT notice and original offline tests are retained under
+`modules/root-face-tracking/upstream`. The separate AZJ2 patch isolates trace
+buffers/events and rejects unverified offsets. The GXR lifecycle, exact library
+gates, unicast-only settings, build and port checks are by **booinspace**.
+The cgroup helper is adapted from compdoge's supervisor. No Samsung perception
+library or captured biometric data is redistributed. See the
+[port and validation limits](../modules/root-face-tracking/README.md).
+
+[compdoge/VRCFT-ALVR-UE](https://github.com/compdoge/VRCFT-ALVR-UE/tree/4ef63fb3582edd261238fb9dab60da5aabbdbc84)
+provides the 1.4.0 PC root receiver, derived from
+[alvr-org/VRCFT-ALVR](https://github.com/alvr-org/VRCFT-ALVR), whose contributors
+include zmerp and curoviyxru. [compdoge/LinkFT](https://github.com/compdoge/LinkFT/tree/36d8ae6979a16a593dac60140d108b7e55891e3f)
+provides the dedicated Galaxy XR Steam Link receiver 1.0.1, based on
+[Ykeara/LinkFT](https://github.com/Ykeara/LinkFT). The Windows installer downloads
+their official release assets with pinned SHA-256 checks; receiver binaries
+are not vendored in the companion source directory. Both keep upstream credit.
+
+[compdoge/gxr-face-bridge](https://github.com/compdoge/gxr-face-bridge/tree/bce6c5ba89ac4fd892fd42dc30df2c1f23a246d4)
+is the APK's OpenXR face/tongue bridge. The APK route and root relay are separate
+tracking paths; the root module does not require the bridge to capture data.
+[AngelDark92/GalaxyXR-Forge](https://github.com/AngelDark92/GalaxyXR-Forge)
+indexes these projects. The
+[PC companion guide](../companions/face-tracking/README.md) explains selection
+and the difference between the two paths.
+
+## Steam Link APK builder
+
+[AngelDark92/xr-porting-hub](https://github.com/AngelDark92/xr-porting-hub)
+supplies the patches, build catalogs and original-APK fallback links.
+[compdoge/gxr-face-bridge](https://github.com/compdoge/gxr-face-bridge)
+supplies the face/tongue layer embedded by those patches.
+[MorpheApp/morphe-desktop](https://github.com/MorpheApp/morphe-desktop) supplies
+the patch/rebuild/sign CLI; [SteamRE/DepotDownloader](https://github.com/SteamRE/DepotDownloader)
+fetches Valve's original APK from the SteamVR content depot. The Windows/WSL
+launcher, compatible-input selection, source/signature checks and signing-key
+reuse are by **booinspace**. See the
+[builder guide](../companions/steamlink/README.md) for requirements and evidence.
+
+The script fetches official tool/patch releases and upstream-published APK
+sources at run time. Downloaded code keeps its upstream license. This repository
+ships no Steam Link APK, signing key or bundled copy of those tools in the
+builder package. Each local build records the exact versions and hashes.

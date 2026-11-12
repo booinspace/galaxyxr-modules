@@ -1,0 +1,8 @@
+/companions/steamlink/Build-SteamLink.cmd text eol=crlf
+/companions/steamlink/*.py text eol=lf
+/companions/steamlink/*.md text eol=lf
+/companions/face-tracking/** text eol=lf
+/modules/root-face-tracking/** text eol=lf
+/scripts/build-root-face-tracking-azj2.py text eol=lf
+/tests/root-face-tracking.test.py text eol=lf
+/tests/steamlink-builder.test.py text eol=lf

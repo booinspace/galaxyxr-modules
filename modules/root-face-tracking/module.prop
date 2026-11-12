@@ -1,0 +1,6 @@
+id=gxr_root_ft_azj2
+name=Galaxy XR root face tracking (AZJ2)
+version=0.1.1-azj2-experimental
+versionCode=10002
+author=compdoge; AZJ2 port by booinspace
+description=Read-only vendor probes relay per-eye gaze, pupils, face and tongue to VRCFT-ALVR-UE. Exact AZJ2 only. Installs disabled. Configure a PC IPv4 address in Action before starting.

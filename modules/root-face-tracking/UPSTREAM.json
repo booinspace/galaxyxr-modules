@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/compdoge/gxr-root-ft",
+  "commit": "4d4dea8f7deacafc6859ab3d7cb98f513550402e",
+  "version": "1.4.0",
+  "license": "MIT",
+  "creator": "compdoge",
+  "port": "booinspace",
+  "changes": "Private tracefs instance and event group, lock failure closed, all-probe startup gate, AZJ2 identity guard, GXR restart lifecycle, explicit unicast destination"
+}

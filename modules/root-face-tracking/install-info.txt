@@ -1,0 +1,6 @@
+Galaxy XR root face tracking: compdoge's sender, AZJ2 port by booinspace.
+Installs DISABLED. Enable only after temporary root is active.
+Action opens settings. Enter the receiving PC's LAN IPv4 address, save, then Start.
+On Windows select RootRelay, not SteamLink or Virtual Desktop, as the face/eye provider.
+UDP 41463 is unencrypted biometric data; use only your trusted LAN.
+No SystemUI injection, APK patch or Soft restart is required. Live tracking is not yet verified.
