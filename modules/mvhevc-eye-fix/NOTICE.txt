@@ -1,0 +1,6 @@
+MV-HEVC patch design and original Galaxy XR work: AngelDark92.
+Source: https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/mvhevc-eye-fix
+AZJ2 verification and locally authored lifecycle controller: booinspace.
+Upstream has no explicit repository-wide license at this revision.
+Samsung media libraries are not included; private copies are generated
+on the user's device from hash-pinned originals. Left-primary video only.

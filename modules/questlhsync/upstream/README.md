@@ -1,0 +1,92 @@
+# QuestLHSync for Galaxy XR
+
+> [!WARNING]
+> This was made with use of an LLM
+
+Experimental KernelSU module that connects Samsung Galaxy XR tracking cameras to
+[QuestLHSync](https://github.com/CreoleVR/QuestLHSync) for Lighthouse alignment
+with Virtual Desktop and SteamVR.
+
+The module uses four outward-facing tracking cameras and prepares calibration
+from the headset's factory data automatically at startup. No manual camera
+calibration is required.
+
+## Requirements
+
+- Samsung Galaxy XR (SM-I610), firmware `I610UEU2AZF3`.
+- KernelSU.
+- Virtual Desktop and SteamVR.
+- A QuestLHSync PC build with Galaxy XR support.
+
+Firmware and camera-library compatibility are checked before startup. Other
+firmware versions are currently unsupported. Face, eye, depth and color
+passthrough cameras are not used for alignment.
+
+## Installation
+
+Download the module ZIP from [Releases](https://github.com/stearnsbq/questlhsync-galaxy-xr/releases),
+install it through KernelSU Manager, and reboot. Use the module's Action button
+if the service does not start automatically.
+
+The module prepares calibration on the headset before starting the camera
+service. The compatible QuestLHSync PC driver must be installed separately.
+
+## Settings
+
+Open the module's **WebUI** in KernelSU Manager to adjust the exposure cutoff
+from **1 to 10 ms**, in 0.1 ms steps. The default is **10 ms**. Choose **Save & apply**
+to save your choice and restart the camera service; tracking reconnects shortly.
+
+Higher cutoffs admit more frames; lower cutoffs reject more motion blur but can
+delay lock or interrupt tracking. This setting filters captured frames; it does
+not control the cameras' exposure. It applies to automatic factory calibration.
+Legacy calibration bundles retain their own exposure limits. Existing saved cutoffs
+are preserved: select **Use default**, then **Save & apply** to use 10 ms.
+The wider range avoids rejecting every frame when automatic exposure stays above
+5 ms. Longer exposures may reduce accuracy during motion; use the lowest cutoff
+that still supplies observations reliably in your lighting.
+
+Settings are stored in `/data/adb/questlhsync-gxr/max-exposure-ns` and survive
+reboots and module updates. The page works offline.
+
+## Building
+
+Requires Python 3, Zig 0.16.0, and Clang/LLD. Build with Android NDK arm64 API 29
+link libraries:
+
+```sh
+python build_module.py --bionic-dir /path/to/ndk/toolchains/llvm/prebuilt/HOST/sysroot/usr/lib/aarch64-linux-android/29
+```
+
+Alternatively, use `--serial ADB_TRANSPORT` to obtain link libraries from a
+connected supported headset. Output ZIPs are written to `build/`. Add
+`--diagnostic` to build without automatic calibration or alignment.
+
+GitHub Actions builds the module on pushes, pull requests and manual runs.
+Version-tag builds publish prereleases. To publish an existing tag manually,
+run the workflow with `release_tag` set to that tag; leave it blank for a build
+only. Releases include a ZIP and SHA256 checksum.
+
+## Service
+
+The service uses TCP port 47280 and UDP port 47281 for discovery. It sends
+tracking observations rather than camera images. The LAN service is
+unauthenticated and should be used on a trusted network.
+
+Logs are available at `/dev/questlhsync-gxr/service.log`. Disabling or removing
+the module stops the service. Calibration is generated locally and is not
+included in distributed packages.
+
+## License
+
+MIT licensed. Includes code from QuestLHSync by CreoleVR; see
+[vendor provenance](vendor/questlhsync/README.md).
+
+## Lock diagnostics
+
+Each camera status line includes `cutoff_ns`, cumulative `exposure_rejected`,
+`observation_frames` (accepted frames with mapped spots), `empty_frames` (accepted
+frames without mapped spots), and `accepted_age_ms` (`-1` before the first accepted
+frame). Increasing rejection counts with no new observations indicate an exposure
+cutoff problem. Increasing empty-frame counts instead indicate that detection or
+visibility needs investigation. These counters do not certify an alignment lock.

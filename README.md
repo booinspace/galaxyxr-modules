@@ -32,6 +32,22 @@ installation while boundary alignment is investigated separately.
 | Mic gain boost | Action UI with live 0–40 step gain control and global or Virtual Desktop-only recording scope | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
 | No low-light toast | Suppresses the low-light signal while retaining the dim-light pipeline | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Low-light guide](modules/no-lowlight-toast/README.md) |
+| QuestLHSync alignment (experimental) | Aligns PC SteamVR Lighthouse devices with Galaxy XR over Virtual Desktop; does not inject native Home Space controllers | [stearnsbq](https://github.com/stearnsbq/questlhsync-galaxy-xr) and [CreoleVR](https://github.com/CreoleVR/QuestLHSync); AZJ2 build/lifecycle by [booinspace](https://github.com/booinspace) | [Lighthouse guide](modules/questlhsync/README.md) |
+| Framebuffer10 (experimental) | Requests 10-bit SDR output with locally generated compositor shader corrections | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/main/modules/framebuffer10); AZJ2 port by [booinspace](https://github.com/booinspace) | [Colour output guide](modules/framebuffer10/README.md) |
+| MV-HEVC eye fix (experimental) | Corrects left-primary spatial-video eye order in Gallery XR; does not change gaze tracking | [AngelDark92](https://github.com/AngelDark92), via [4uva4ek's repository](https://github.com/4uva4ek/galaxyxr-modules/tree/main/modules/mvhevc-eye-fix); AZJ2 lifecycle by [booinspace](https://github.com/booinspace) | [Video guide](modules/mvhevc-eye-fix/README.md) |
+| Virtual Desktop gaze fix (Windows companion) | VRCFaceTracking DLL correcting avatar gaze when the head rolls; install on the PC | [SinonVT](https://github.com/SinonVT/GalaxyXR-EyeTracking-Fix-Virtual-Desktop) and [guygodin](https://github.com/guygodin/VirtualDesktop.VRCFaceTracking); numeric fix/build by [booinspace](https://github.com/booinspace) | [PC install guide](companions/vd-eye-fix/README.md) |
+
+The three new experimental headset ports have AZJ2 identity and host checks,
+but have not been activated or tested on the headset. Install and test one at
+a time; their guides distinguish build evidence from live behavior. The
+Windows gaze fix passes 1,050 direction/roll/scale checks and invalid-input
+checks, but still needs a live VRCFaceTracking test. These builds are separate
+from the previously published release linked above.
+
+The [OpenXR QUALITY investigation](docs/LIGHTHOUSE-AND-QUALITY.md#openxr-quality)
+explains its conditional 60 FPS camera request and the changed AZJ2 policy
+identity that blocks a direct install. No QUALITY build or native Home Space
+Lighthouse bridge is included.
 
 The Window Controls runtime stayed enabled and resumed automatically after two
 consecutive GXR Soft restarts on the AZJ2 headset. The second device test
@@ -79,6 +95,10 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 - [Shared borderless agent](scripts/curvature-borderless-agent.mjs)
 - [Rotation helper source](modules/window-rotation/android/local/gxr/rotation/)
 - [Bread ports and host checks](docs/BREAD-AZJ2.md)
+- [QuestLHSync AZJ2 build](scripts/build-questlhsync-azj2.py)
+- [Framebuffer10 AZJ2 build](scripts/build-framebuffer10-azj2.py)
+- [MV-HEVC AZJ2 packaging](scripts/build-mvhevc-azj2.py)
+- [Virtual Desktop Windows companion build](scripts/build-vd-eye-fix.ps1)
 - [Sources, credits and licensing](docs/SOURCES.md)
 
 The repository includes component sources and build inputs. Use the combined

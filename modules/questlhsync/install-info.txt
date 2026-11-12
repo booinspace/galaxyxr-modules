@@ -1,0 +1,7 @@
+AZJ2 only. Install disabled after KernelSU GXR reports Working.
+Enable and tap Action. Install official QuestLHSync with Galaxy XR support
+on the SteamVR PC separately. Index/Tundra/Vive dongles stay on the PC.
+This aligns PC SteamVR tracking; it does not add native Home Space input.
+Trusted LAN only: TCP 47280 and UDP 47281 are unauthenticated.
+Uncheck and wait for clean stop before updating/removing. Fully reboot if
+cleanup is unverified. See README.md for limits, setup, build and credits.

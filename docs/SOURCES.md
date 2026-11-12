@@ -67,6 +67,54 @@ The mic Action UI, live settings and global recording scope in 0.2.0 are by
 [booinspace](https://github.com/booinspace). The upstream MIT notices remain
 included. The slider controls codec steps; acoustic dB gain is not calibrated.
 
+## Lighthouse alignment and video ports
+
+[stearnsbq/questlhsync-galaxy-xr](https://github.com/stearnsbq/questlhsync-galaxy-xr/tree/e0f476e00169744a201ea8656aef4dc266ca63fd),
+commit `e0f476e00169744a201ea8656aef4dc266ca63fd`, supplies the Galaxy XR QVR
+capture, factory calibration, exposure filter and settings page. It embeds
+the observation server from [CreoleVR/QuestLHSync](https://github.com/CreoleVR/QuestLHSync).
+Both MIT notices are retained, with the upstream source in the repository and
+package. The AZJ2 port uses Android NDK 28.2/bionic, exact firmware/library
+checks and a process-identity supervisor with coordinated restart hooks.
+Those integration changes are by **booinspace**. No factory maps or headset
+camera images are redistributed. This is PC alignment, not native Android
+controller injection.
+
+[4uva4ek/galaxyxr-modules](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b),
+commit `9f096dfc79e72f180410bcfa5ba32b566734f62b`, supplies **4uva4ek's
+Framebuffer10** controller/colour recipe and documents **AngelDark92's
+MV-HEVC eye-order patches**. The build recipe fetches the pinned Framebuffer10
+source and applies the AZJ2 identity and restart changes. It retains upstream
+native/NDK notices. The MV-HEVC package uses a locally authored lifecycle
+controller and the documented three patch sites. No proprietary stock or
+modified Samsung library is shipped in either package. Both generate private
+copies on the user's device and check the full result hashes.
+
+The pinned 4uva4ek source has no explicit repository-wide license. Attribution
+does not supply redistribution permission; review upstream terms before
+redistributing its compiled Framebuffer10 controller. The repository keeps
+the pinned fetch/build recipe rather than bulk-vendoring that source.
+The OpenXR QUALITY investigation also references that pinned source; no
+QUALITY binary is included.
+
+Offline shader review used official
+[SPIRV-Tools v2026.4](https://github.com/KhronosGroup/SPIRV-Tools/releases/tag/v2026.4),
+commit `ef96ed763b43b59b33b31b362f09a02b729fa1c9`, and SPIRV-Headers
+`496543121ce6419f23d6fa5d7194ba66c36212d2`. These are host validation tools,
+not headset runtime dependencies.
+
+## Virtual Desktop VRCFaceTracking companion
+
+[SinonVT/GalaxyXR-EyeTracking-Fix-Virtual-Desktop](https://github.com/SinonVT/GalaxyXR-EyeTracking-Fix-Virtual-Desktop/tree/51a482cc2ce903fc51d238d55f561dbedcae767a),
+commit `51a482cc2ce903fc51d238d55f561dbedcae767a`, supplies the direction-based
+eye fix on top of **guygodin / Virtual Desktop, Inc.'s** MIT-licensed
+VRCFaceTracking plugin. The original expression conversion credits regzo2's
+QuestProOpenXR module. Sources and MIT license are retained under
+`companions/vd-eye-fix`. **booinspace** added the build/test integration and
+homogeneous quaternion maths for non-unit/invalid input. The hash-pinned Core
+reference DLL is downloaded only for compilation and is not redistributed.
+This companion runs on Windows; it has no Android firmware hooks.
+
 ## Root tools
 
 The separate [Galaxy XR root project](https://git.puppy.boo/nathalie/galaxyxr-root)

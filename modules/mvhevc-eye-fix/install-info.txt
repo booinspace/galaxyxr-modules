@@ -1,0 +1,5 @@
+AZJ2 only. Install disabled after KernelSU GXR reports Working.
+Enable and tap Action, then reopen Gallery XR. Left-primary MV-HEVC only.
+This changes video eye order, not eye tracking. No vendor libraries ship.
+Uncheck to restore; wait for GXR_UPDATE_STATE=STOCK before removal/update.
+Fully reboot if restoration cannot be verified. See README.md.

@@ -1,0 +1,6 @@
+id=gxr_mvhevc_eye_fix
+name=Galaxy XR MV-HEVC Eye Fix (AZJ2)
+version=0.1.0-azj2-experimental
+versionCode=10001
+author=AngelDark92; AZJ2 lifecycle port by booinspace
+description=Corrects left-primary MV-HEVC eye order in Gallery XR. Generates reviewed library copies locally; no firmware binary is bundled. Installs disabled. Enable and Action; reopen Gallery. Right-primary videos are unsupported.

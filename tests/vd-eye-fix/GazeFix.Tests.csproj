@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../companions/vd-eye-fix/GazeFix.cs" Link="GazeFix.cs" />
+    <Compile Include="../../companions/vd-eye-fix/Quaternion.cs" Link="Quaternion.cs" />
+    <Reference Include="VRCFaceTracking.Core"><HintPath>$(GxrCoreReferencePath)</HintPath></Reference>
+  </ItemGroup>
+</Project>
