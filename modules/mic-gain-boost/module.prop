@@ -1,6 +1,6 @@
 id=gxr_mic_gain_azj2
 name=Galaxy XR mic gain boost (AZJ2)
-version=0.1.0-azj2-experimental
-versionCode=1
-author=BreadDoesStuff; AZJ2 port by nathalie
+version=0.1.1-azj2-experimental
+versionCode=2
+author=BreadDoesStuff; AZJ2 port by booinspace
 description=Experimental disabled AZJ2 port. Read README.md for activation, side effects and recovery.

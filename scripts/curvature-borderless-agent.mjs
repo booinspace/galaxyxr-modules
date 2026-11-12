@@ -1,6 +1,6 @@
 // Home Space rim and hover-caption hooks share the window runtime's Java bridge.
 // Caption backgrounds are cast to Android View before visibility calls.
-export function installBorderless(Java, fail) {
+export function installBorderless(Java, fail, CaptionVisibility) {
     function report(message) {
         console.log(message);
         if (message.startsWith('GXR_BORDERLESS_FATAL ')) fail(new Error(message));
@@ -9,34 +9,33 @@ export function installBorderless(Java, fail) {
     const tracked = new Set();
     const hooks = [];
     const captions = [];
-    const hideTimers = new Map();
-    let lastPulse = Date.now();
     let stopped = false;
     let restored = false;
-    let watchdog = null;
     let suppressed = 0;
     let hidden = 0;
 
     function stop(reason) {
         if (stopped) return;
         stopped = true;
-        if (watchdog !== null) clearInterval(watchdog);
         Java.perform(() => {
             for (const hook of hooks) hook.implementation = null;
             hooks.length = 0;
             tracked.clear();
-            for (const timer of hideTimers.values()) clearTimeout(timer);
-            hideTimers.clear();
-            Java.scheduleOnMainThread(() => {
-                for (const ref of captions) {
-                    const view = ref.get();
-                    if (view) Java.cast(view, Java.use('android.view.View')).setVisibility(0);
-                }
-                captions.length = 0;
-                restored = true;
-                report('GXR_BORDERLESS_STOPPED ' + reason);
-            });
+            for (const ticket of captions) {
+                try { ticket.close(); }
+                catch (error) { report('GXR_BORDERLESS_RESTORE_ERROR ' + String(error)); }
+            }
         });
+    }
+
+    function captionFor(view) {
+        for (let i = captions.length - 1; i >= 0; i--) {
+            if (captions[i].isCollected()) captions.splice(i, 1)[0].$dispose();
+            else if (captions[i].owns(view)) return captions[i];
+        }
+        const ticket = Java.retain(CaptionVisibility.$new(view));
+        captions.push(ticket);
+        return ticket;
     }
 
     try {
@@ -57,8 +56,6 @@ export function installBorderless(Java, fail) {
         const captionId = ids.caption.value;
         const backgroundId = ids.caption_background.value;
         const motion = Java.use('android.view.MotionEvent');
-        const system = Java.use('java.lang.System');
-        const weakRef = Java.use('java.lang.ref.WeakReference');
 
         initialize.implementation = function (updates, name, order) {
             const result = initialize.call(this, updates, name, order);
@@ -100,11 +97,7 @@ export function installBorderless(Java, fail) {
             if (!stopped) {
                 try {
                     const background = Java.cast(root.requireViewById(backgroundId), viewClass);
-                    background.setVisibility(4); // INVISIBLE retains the caption's drag layout.
-                    for (let i = captions.length - 1; i >= 0; i--) {
-                        if (!captions[i].get()) captions.splice(i, 1);
-                    }
-                    captions.push(weakRef.$new(background));
+                    captionFor(background).hide(); // INVISIBLE retains the caption's drag layout.
                     if (++hidden === 1) report('GXR_BORDERLESS_CAPTION_HIDDEN first caption');
                 } catch (error) {
                     report('GXR_BORDERLESS_FATAL ' + String(error));
@@ -119,22 +112,7 @@ export function installBorderless(Java, fail) {
                 String(this.getClass().getName()) === 'com.android.wm.shell.windowdecor.WindowDecorLinearLayout') {
                 try {
                     const background = Java.cast(this.requireViewById(backgroundId), viewClass);
-                    const key = system.identityHashCode(this);
-                    const oldTimer = hideTimers.get(key);
-                    if (oldTimer) clearTimeout(oldTimer);
-                    hideTimers.delete(key);
-                    if (event.getActionMasked() === motion.ACTION_HOVER_EXIT.value) {
-                        const retained = Java.retain(background);
-                        const timer = setTimeout(() => Java.scheduleOnMainThread(() => {
-                            if (!stopped && hideTimers.get(key) === timer) {
-                                retained.setVisibility(4);
-                                hideTimers.delete(key);
-                            }
-                        }), 500);
-                        hideTimers.set(key, timer);
-                    } else {
-                        background.setVisibility(0);
-                    }
+                    captionFor(background).hover(event.getActionMasked() === motion.ACTION_HOVER_EXIT.value);
                 } catch (error) {
                     report('GXR_BORDERLESS_FATAL ' + String(error));
                 }
@@ -143,16 +121,30 @@ export function installBorderless(Java, fail) {
         };
         hooks.push(dispatchHover);
 
-        watchdog = setInterval(() => {
-            if (!stopped && Date.now() - lastPulse > 5000) {
-                report('GXR_BORDERLESS_FATAL supervisor timeout');
-            }
-        }, 1000);
+        // The shared monotonic supervisor owns expiry; wall time advances during sleep.
         report('GXR_BORDERLESS_READY');
         return {
-            pulse() { lastPulse = Date.now(); },
+            pulse() {
+                for (const ticket of captions) {
+                    const error = ticket.getLastError();
+                    if (error !== null) throw new Error('Caption visibility: ' + error);
+                }
+            },
             stop() { stop('curvature supervisor stopped'); },
-            isStopped() { return restored; },
+            isStopped() {
+                if (!stopped || restored) return restored;
+                let pending = false;
+                for (const ticket of captions) {
+                    if (!ticket.isRestored()) { ticket.close(); pending = true; }
+                }
+                if (!pending) {
+                    for (const ticket of captions) ticket.$dispose();
+                    captions.length = 0;
+                    restored = true;
+                    report('GXR_BORDERLESS_STOPPED curvature supervisor stopped');
+                }
+                return restored;
+            },
         };
     } catch (error) {
         for (const hook of hooks) hook.implementation = null;

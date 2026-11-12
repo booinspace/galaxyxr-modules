@@ -10,15 +10,24 @@ DirtyFrag, KernelSU GXR and root instructions.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
-| Window controls | Curvature, white-rim removal, pill auto-hide, and pitch/yaw/roll controls in one runtime | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless and rotation by [booinspace](https://github.com/booinspace) | [Install, use, build and recover](docs/CURVATURE.md) |
-| Recovery | Exports window logs and acknowledges quarantine after a full reboot | [booinspace](https://github.com/booinspace) | [Recovery](docs/CURVATURE.md#recovery-and-logs) |
+| Window controls | Curvature, white-rim removal, pill auto-hide, pitch/yaw/roll, recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
+| Wear-aware dimming | Dims after 60 seconds without detected eyes while worn; keeps proximity removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear and eye APIs | [Wear/dim guide](modules/wear-dim/README.md) |
+| Legacy Recovery helper | Supports older installed window modules; current combined package includes recovery | [booinspace](https://github.com/booinspace) | [Recovery](docs/CURVATURE.md#recovery-and-logs) |
 | Mic gain boost | Adjusts microphone gain for selected recording modes | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
 | No low-light toast | Suppresses the low-light signal while retaining the dim-light pipeline | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Low-light guide](modules/no-lowlight-toast/README.md) |
 
-Window controls are confirmed working on the user's AZJ2 headset. The three
-BreadDoesStuff ports have passed build and host checks; their individual
-feature behavior still needs device validation.
+The Window Controls runtime stayed enabled and resumed automatically after two
+consecutive GXR Soft restarts on the AZJ2 headset. The second device test
+confirmed curvature, rotation, rim/pill hiding, dragging and app input. The
+90-second startup gate is a workaround; the native startup crash that prompted
+it has not been fully diagnosed. Extended idle/wake stability remains
+unverified. The three BreadDoesStuff ports have passed build and host checks;
+their individual feature behavior still needs device validation.
+
+The experimental [wear-aware dimming module](modules/wear-dim/README.md) is a
+standalone process and needs device validation. The [firmware hold guide](docs/FIRMWARE-HOLD.md)
+records the reversible OTA-agent block applied to keep the headset on AZJ2.
 
 ## Window controls
 
@@ -27,14 +36,23 @@ Install from storage**. Keep separate Borderless and Rotation modules off.
 The combined module owns all window features through one injector, Java
 bridge, menu layout and rollback supervisor.
 
-After enabling it, use one GXR **Soft restart**. Wait **45 seconds**, then
+After enabling it, tap the combined module's **Action** to start it. Planned
+GXR Soft restarts use cleanup hooks and a single-use handoff to resume in the
+new SystemUI process while keeping the module enabled. Automatic resume now
+waits for a **90-second SystemUI process age**, then the usual **45-second**
+Borderless delay. Allow up to **150 seconds** after Home Space returns, then
 fully close and reopen an app window. The delay does not retrofit an already
 restored window. The rim and resting pill hide; pointing at the top reveals
 the pill and retains dragging. The app's top menu contains Curve/Flatten,
 curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
-The tested package is `Combined-0.1.9-ROTATION.zip`, 25,439,558 bytes (25.44 MB),
-SHA-256 `889e8fdae4977889092a459cc78adef0e39fb0f3186a8d8f3e514cbe17baf916`.
+The current package is `Combined-0.1.15-booinspace.zip`. The build includes an
+ART/CMC bridge patch and checks the exact ART library hash before attachment.
+Recovery is built in: after a cold boot, module startup preserves diagnostics
+and acknowledges the previous boot's session automatically. **Action** starts
+the enabled module if needed and exports logs. Same-boot quarantine stays
+blocked unless a clean planned restart explicitly authorizes the replacement
+SystemUI process. The module never enables its own checkbox.
 See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 
 ## Build and source

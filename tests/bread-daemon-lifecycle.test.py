@@ -73,6 +73,21 @@ else:
                 status = subprocess.check_output(['/bin/sh', str(control), 'status'], env=env, text=True)
                 self.assertIn('RUNNING', status)
                 self.assertNotIn('GXR_UPDATE_STATE=STOCK', status)
+                subprocess.run(['/bin/sh', str(control), 'prepare'], env=env, check=True, timeout=25)
+                child.communicate(timeout=5)
+                self.assertFalse((module / 'owned-test-value').exists())
+                self.assertFalse((module / 'session-open').exists())
+                self.assertFalse(state.exists())
+                self.assertFalse((module / 'failure').exists())
+                self.assertFalse((module / 'disable').exists(), 'restart preparation must preserve activation')
+                child = subprocess.Popen(['/bin/sh', str(control), 'run'], env=env,
+                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                end = time.monotonic() + 5
+                while not (state / 'ready').exists() and time.monotonic() < end:
+                    if child.poll() is not None: self.fail(child.stdout.read())
+                    time.sleep(.02)
+                self.assertTrue((state / 'ready').exists())
+                self.assertEqual((module / 'daemon-starts').read_text(), '2')
                 stopped = subprocess.check_output(['/bin/sh', str(control), 'off'], env=env, text=True, timeout=25)
                 self.assertIn('GXR_UPDATE_STATE=STOCK', stopped)
                 child.communicate(timeout=5)

@@ -7,9 +7,9 @@ const source = readFileSync(new URL('../scripts/curvature-borderless-agent.mjs',
     .replace('export function', 'function');
 
 function fixture() {
-    const calls = [], logs = [], failures = [], mainQueue = [];
+    const calls = [], logs = [], failures = [], ownerQueue = [];
     const timers = new Map(), intervals = new Map();
-    let clock = 0, timerId = 0;
+    let clock = 0, timerId = 0, clockReads = 0;
     const method = original => ({implementation: null,
         call(receiver, ...args) { return original.apply(receiver, args); }});
     const initialize = method(function (updates) { updates.enablePanelBorderRim(this.getWindowNode()); });
@@ -38,11 +38,35 @@ function fixture() {
         use(name) { assert.ok(classes[name], `unexpected class ${name}`); return classes[name]; },
         cast(wrapper, type) { assert.equal(type, viewClass); return wrapper.view; },
         perform: callback => callback(),
-        scheduleOnMainThread: callback => mainQueue.push(callback),
+        scheduleOnMainThread() { throw new Error('Caption owner is wmshell.main, not main'); },
         retain: view => view,
     };
+    const CaptionVisibility = {$new(view) {
+        let generation = 0, pending = null, closing = false, restored = false;
+        function schedule(value, delay) {
+            const token = ++generation;
+            if (pending !== null) timers.delete(pending);
+            pending = null;
+            const apply = () => { if (!closing && token === generation) view.setVisibility(value); };
+            if (delay) {
+                pending = ++timerId;
+                const id = pending;
+                timers.set(id, () => { timers.delete(id); ownerQueue.push(apply); });
+            } else ownerQueue.push(apply);
+        }
+        return {hide: () => schedule(4, 0), hover: exit => schedule(exit ? 4 : 0, exit ? 500 : 0),
+            owns: candidate => candidate === view, isCollected: () => false, getLastError: () => null,
+            isRestored: () => restored, $dispose() {},
+            close() {
+                closing = true;
+                if (pending !== null) timers.delete(pending);
+                ownerQueue.push(() => { view.setVisibility(0); restored = true; });
+            },
+        };
+    }};
     const context = {
-        Java, console: {log: line => logs.push(line)}, Date: {now: () => clock},
+        Java, CaptionVisibility, console: {log: line => logs.push(line)},
+        Date: {now() { clockReads++; return clock; }},
         setInterval(callback) { const id = ++timerId; intervals.set(id, callback); return id; },
         clearInterval: id => intervals.delete(id),
         setTimeout(callback) {
@@ -53,7 +77,7 @@ function fixture() {
         clearTimeout: id => timers.delete(id),
         fail(error) { failures.push(error); context.handle?.stop(); },
     };
-    runInNewContext(source + '\nhandle = installBorderless(Java, fail);', context);
+    runInNewContext(source + '\nhandle = installBorderless(Java, fail, CaptionVisibility);', context);
     const updates = {
         enablePanelBorderRim: () => calls.push(['stock rim']),
         disablePanelBorderRim: () => calls.push(['hide rim']),
@@ -67,7 +91,8 @@ function fixture() {
     return {context, calls, logs, failures, timers, intervals, updates, background, caption,
         initialize, setRim, release, setupCaption, dispatchHover,
         clock(value) { clock = value; },
-        flushMain() { while (mainQueue.length) mainQueue.shift()(); },
+        clockReads: () => clockReads,
+        flushOwner() { while (ownerQueue.length) ownerQueue.shift()(); },
     };
 }
 
@@ -85,16 +110,19 @@ test('restored task rims and hover pill retain stock event handling and stop ack
     assert.deepEqual(f.calls.at(-1), ['rim', true]);
 
     f.setupCaption.implementation.call({}, f.caption, {});
+    f.flushOwner();
     assert.equal(f.background.visibility, 4);
     assert.equal(f.dispatchHover.implementation.call(f.caption, {getActionMasked: () => 9}), false);
+    f.flushOwner();
     assert.equal(f.background.visibility, 0);
     f.dispatchHover.implementation.call(f.caption, {getActionMasked: () => 10});
     assert.equal(f.background.visibility, 0);
     for (const callback of f.timers.values()) callback();
-    f.flushMain();
+    f.flushOwner();
     assert.equal(f.background.visibility, 4);
     f.dispatchHover.implementation.call(f.caption, {getActionMasked: () => 10});
     f.dispatchHover.implementation.call(f.caption, {getActionMasked: () => 9});
+    f.flushOwner();
     assert.equal(f.timers.size, 0);
     assert.equal(f.background.visibility, 0);
     f.dispatchHover.implementation.call({...f.caption, getId: () => 99}, {getActionMasked: () => 10});
@@ -105,7 +133,7 @@ test('restored task rims and hover pill retain stock event handling and stop ack
     handle.stop();
     assert.equal(handle.isStopped(), false, 'must wait for UI restoration');
     assert.equal(f.intervals.size, 0);
-    f.flushMain();
+    f.flushOwner();
     assert.equal(handle.isStopped(), true);
     assert.equal(f.background.visibility, 0);
     for (const hook of [f.initialize, f.setRim, f.release, f.setupCaption, f.dispatchHover]) {
@@ -115,25 +143,23 @@ test('restored task rims and hover pill retain stock event handling and stop ack
     assert.deepEqual(f.failures, []);
 });
 
-test('supervisor pulses keep the restored hooks alive; expiry stops the combined agent', () => {
-    const f = fixture(), watchdog = [...f.intervals.values()][0];
-    f.clock(4000);
+test('sleep and wall-clock jumps cannot expire a second supervisor in the shared runtime', () => {
+    const f = fixture();
+    f.clock(600000);
     f.context.handle.pulse();
-    f.clock(8000);
-    watchdog();
+    f.clock(-1000);
+    f.context.handle.pulse();
+    assert.equal(f.clockReads(), 0);
+    assert.equal(f.intervals.size, 0, 'the shared monotonic supervisor owns expiry');
     assert.deepEqual(f.failures, []);
-    f.clock(9001);
-    watchdog();
-    assert.match(String(f.failures[0]), /supervisor timeout/);
-    f.flushMain();
-    assert.equal(f.context.handle.isStopped(), true);
+    assert.notEqual(f.initialize.implementation, null);
 });
 
 test('caption failure reaches Curvature fail handler and removes all owned hooks', () => {
     const f = fixture();
     f.setupCaption.implementation.call({}, {requireViewById() { throw new Error('missing caption'); }}, {});
     assert.match(String(f.failures[0]), /missing caption/);
-    f.flushMain();
+    f.flushOwner();
     assert.equal(f.context.handle.isStopped(), true);
     assert.equal(f.dispatchHover.implementation, null);
 });

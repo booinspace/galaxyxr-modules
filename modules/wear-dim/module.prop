@@ -1,0 +1,6 @@
+id=gxr_wear_dim_azj2
+name=Galaxy XR wear-aware eye-loss dimming (AZJ2)
+version=0.1.2-azj2-experimental
+versionCode=3
+author=booinspace
+description=Dims after 60 seconds without eyes instead of using the no-eyes sleep countdown. Keeps stock proximity removal sensing. Enable then Action; no Soft restart needed.

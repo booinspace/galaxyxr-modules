@@ -108,10 +108,13 @@ built packages. No firmware binaries or root exploit are bundled.
 
 ## Built releases
 
+The current port ZIPs are version **0.1.1**, credited to BreadDoesStuff with the
+AZJ2 port by **booinspace**. Their runtime files match the previous release.
+
 | Module | ZIP SHA-256 |
 | --- | --- |
-| mic-gain-boost | `e4323e3d943e5e92ea823a1673ab89139ef56951ee3d515042634b6cfa448010` |
-| passthrough-anywhere | `993f2d0ce752477588555b3abcfdda3739e665f183c1c2fea1dc35026916f485` |
-| no-lowlight-toast | `e27b51605f7e689bbd551c193542b994f72c37de2f87e7df7b5854e179c62684` |
+| mic-gain-boost | `6e654a12c87f453d5c716463658d2285386adbd72083099ea22386771f6be71b` |
+| passthrough-anywhere | `3dd1a8b9056f9fade118fc50ea8dcc8adf7901d76216dee08bb62493b5aa2b22` |
+| no-lowlight-toast | `626c663c326d55705454bbaada07fe31d12db7909b8c5fdb6fc80ef35d561322` |
 
 Use one branch/version for each feature; do not enable duplicate variants.

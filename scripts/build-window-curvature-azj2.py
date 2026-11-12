@@ -14,6 +14,8 @@ SYSTEMUI = "dc664a17617b97d2aafebac9690c4235f530cd24399fbe16b6634d5df2a6a6dc"
 RENDERER = "8342a55dd62163af3653dcf2153a842e243377897ced3ca00703603d275a3d7f"
 IMPRESS = "ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42"
 FRAMEWORK = "6ec625a07d94e3e50d82eea14bcec05425de303a62a512e6b82ae57881c46ad7"
+ART = "afc9dde61f50e1e2b085c886e2bad7df98c433b28e0f01041221e1d138c321c5"
+CMC_PATCH_SHA = "354bec3059c53cf9f83d3d8f3dcc81417654c0a2620bfac188c52e0092ba84bd"
 
 
 def replace(path: Path, old: str, new: str) -> None:
@@ -23,6 +25,38 @@ def replace(path: Path, old: str, new: str) -> None:
     path.write_text(data.replace(old, new))
 
 
+def patch_art_cmc(work: Path, module: Path) -> None:
+    """Keep Frida's cloned methods visible to this firmware's moving GC."""
+    shutil.copyfile(ROOT / "scripts/curvature/frida-java-bridge-cmc.patch",
+                    module / "agent/frida-java-bridge-cmc.patch")
+    builder = work / "tools/build_window_curvature.py"
+    replace(builder, "        diagnostics = []",
+            "        patch = MODULE / 'agent/frida-java-bridge-cmc.patch'\n"
+            f"        if hashlib.sha256(patch.read_bytes()).hexdigest() != {CMC_PATCH_SHA!r}:\n"
+            "            raise ValueError('CMC bridge patch integrity mismatch')\n"
+            "        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        subprocess.run(['git', 'apply', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        diagnostics = []")
+    replace(builder, "        'bridgeVersion': '7.0.13', 'bridgeSha512': BRIDGE_SHA512,",
+            "        'bridgeVersion': '7.0.13', 'bridgeSha512': BRIDGE_SHA512,\n"
+            "        'bridgeCmcPatch': {\n"
+            "            'url': 'https://github.com/frida-packages/frida-java-bridge/pull/410',\n"
+            "            'commit': 'fcdd7186467e8c6dfdcef888208807c9fc0424db',\n"
+            f"            'sha256': {CMC_PATCH_SHA!r},\n"
+            "            'localChange': 'Fail before cloning if the CMC allocator is unavailable',\n"
+            "        },")
+    replace(module / "THIRD_PARTY.md", "bundled unmodified source through Frida Compiler.",
+            "bundled through Frida Compiler with the CMC allocation patch below.")
+    with (module / "THIRD_PARTY.md").open("a") as notices:
+        notices.write(
+            "\nCMC method-allocation patch by pandasauce:\n"
+            "https://github.com/frida-packages/frida-java-bridge/pull/410\n"
+            "Upstream commit: fcdd7186467e8c6dfdcef888208807c9fc0424db.\n"
+            "Local addition: refuse CMC cloning if its allocator is unavailable.\n"
+            "The original npm source and complete local patch are included;\n"
+            "the patch is bin/source/agent/frida-java-bridge-cmc.patch.\n")
+
+
 def integrate_rotation(module: Path) -> None:
     """Share Curvature's bridge, menu owner and supervisor with Rotation."""
     destination = module / "android/local/gxr/rotation"
@@ -30,21 +64,23 @@ def integrate_rotation(module: Path) -> None:
     for source in sorted((ROOT / "modules/window-rotation/android/local/gxr/rotation").glob("*.java")):
         shutil.copyfile(source, destination / source.name)
     props = module / "module.prop"
-    replace(props, "version=0.1.7-azj2-experimental", "version=0.1.9-azj2-experimental")
-    replace(props, "versionCode=108", "versionCode=110")
+    replace(props, "version=0.1.7-azj2-experimental", "version=0.1.15-azj2-experimental")
+    replace(props, "versionCode=108", "versionCode=116")
     replace(props, "name=Galaxy XR Curvature + Borderless Windows",
             "name=Galaxy XR Curvature + Borderless + Rotation")
     replace(props,
             "description=Experimental AZJ2 curvature with original rim hiding and hover caption after 45 seconds. One injector; installs disabled. Keep separate Borderless off.",
-            "description=Experimental AZJ2 curvature, rim and pill hiding, and pitch/yaw/roll controls. One injector and shared menu. Keep separate Rotation and Borderless off. Installs disabled.")
+            "description=Experimental AZJ2 curvature, rim/pill hiding, rotation, built-in recovery and coordinated Soft restart resume. Action starts and exports logs. Crashes remain quarantined. Keep separate window modules off. Installs disabled.")
     pins = module / "firmware.sha256"
-    pins.write_text(pins.read_text() + f"{FRAMEWORK}  /system/framework/framework.jar\n")
+    pins.write_text(pins.read_text() + f"{FRAMEWORK}  /system/framework/framework.jar\n"
+                    f"{ART}  /apex/com.android.art/lib64/libart.so\n")
     checker = module.parents[1] / "tools/check_window_curvature_package.py"
     expected_pins = {
         "/system_ext/priv-app/XrSystemUI/XrSystemUI.apk": SYSTEMUI,
         "/system_ext/lib64/libspaceflinger_jni_vulkan.so": RENDERER,
         "/system_ext/lib64/libImpress-jni-vulkan.so": IMPRESS,
         "/system/framework/framework.jar": FRAMEWORK,
+        "/apex/com.android.art/lib64/libart.so": ART,
     }
     replace(checker, "        for line in archive.read('firmware.sha256').decode().splitlines():",
             "        pins = dict((line.split('  ', 1)[1], line.split('  ', 1)[0])\n"
@@ -107,6 +143,96 @@ def integrate_rotation(module: Path) -> None:
             "    echo 'Rotation: shared Curvature menu; standalone Rotation must stay off.'")
 
 
+def integrate_recovery(work: Path, module: Path) -> None:
+    """Recover a previous full boot before attaching; keep same-boot quarantine."""
+    shutil.copyfile(ROOT / "modules/curvature-recovery/action.sh", module / "recovery.sh")
+    shutil.copyfile(ROOT / "scripts/curvature-boot-recovery.sh", module / "boot-recovery.sh")
+    shutil.copyfile(ROOT / "scripts/curvature-action.sh", module / "action.sh")
+    replace(work / "tools/build_window_curvature.py",
+            "'action.sh', 'auto.sh', 'uninstall.sh', 'control.sh', 'firmware.sha256',",
+            "'action.sh', 'auto.sh', 'uninstall.sh', 'control.sh', 'firmware.sha256',\n"
+            "        'recovery.sh', 'boot-recovery.sh',")
+    replace(module / "customize.sh", "for script in service.sh action.sh auto.sh control.sh uninstall.sh; do",
+            "for script in service.sh action.sh auto.sh control.sh uninstall.sh recovery.sh boot-recovery.sh; do")
+    control = module / "control.sh"
+    replace(control, "STATE=/dev/gxr-window-curvature\n",
+            "STATE=/dev/gxr-window-curvature\nLAUNCH_LOCK=/dev/gxr-window-curvature-launch\n")
+    replace(control, "  else echo 'Runtime not running.'; fi",
+            "  elif [ -d \"$LAUNCH_LOCK\" ]; then\n"
+            "    echo 'STARTING - validating or waiting for SystemUI startup.'\n"
+            "  else echo 'Runtime not running.'; fi")
+    replace(control, 'case "${1:-status}" in',
+            '. "$MODDIR/boot-recovery.sh"\ncase "${1:-status}" in')
+    replace(control, "  echo 'Enable/re-enable: turn checkbox on and reboot. No app curvature is saved across reboot.'",
+            "  echo 'After a full reboot, enable and tap Action to start. Action also exports logs.'")
+    old_reset = control.read_text().split("\nreset)\n", 1)[1].split("\nrun)\n", 1)[0]
+    replace(control, "\nreset)\n" + old_reset + "\nrun)\n",
+            "\nreset)\n"
+            "  [ -f \"$MODDIR/disable\" ] || { echo 'Disable the module first.'; exit 1; }\n"
+            "  [ ! -d \"$STATE\" ] || { echo 'Runtime state remains; fully reboot first.'; exit 1; }\n"
+            "  [ ! -d \"$LAUNCH_LOCK\" ] || { echo 'Controller remains; fully reboot first.'; exit 1; }\n"
+            "  clear_after_reboot || exit 1\n"
+            "  echo 'Recovery complete. Module remains disabled.'\n"
+            "  ;;\nrun)\n")
+    prefix = ('run)\n  [ "$(id -u)" = 0 ] || { echo \'Root required.\'; exit 1; }\n'
+              '  allowed || exit 0\n')
+    replace(control, prefix, prefix +
+            "  mkdir \"$LAUNCH_LOCK\" 2>/dev/null || { echo 'Controller already starting or active.'; exit 0; }\n"
+            "  trap 'rmdir \"$LAUNCH_LOCK\" 2>/dev/null || true' EXIT\n")
+    checked = "  sha256sum -c \"$MODDIR/firmware.sha256\" >/dev/null 2>&1 || fail 'Firmware APK/native hash mismatch'\n"
+    replace(control, checked, checked +
+            "  clear_after_reboot || fail 'Previous quarantine requires a full reboot or manual review'\n"
+            "  allowed || exit 0\n")
+    replace(control, "    fi\n  }\n  trap finish EXIT\n",
+            "    fi\n    rmdir \"$LAUNCH_LOCK\" 2>/dev/null || true\n  }\n  trap finish EXIT\n")
+
+
+def integrate_restart(work: Path, module: Path) -> None:
+    """Resume only after clean hook removal and verified SystemUI replacement."""
+    shutil.copyfile(ROOT / "scripts/curvature-restart.sh", module / "restart.sh")
+    hooks = [f"restart-{phase}.sh" for phase in ("prepare", "stopped", "started", "abort")]
+    for name in hooks:
+        shutil.copyfile(ROOT / "scripts/curvature-restart-hook.sh", module / name)
+    replace(work / "tools/build_window_curvature.py",
+            "        'recovery.sh', 'boot-recovery.sh',",
+            "        'recovery.sh', 'boot-recovery.sh', 'restart.sh',\n"
+            "        " + ", ".join(repr(name) for name in hooks) + ",")
+    installer = module / "customize.sh"
+    replace(installer, "uninstall.sh recovery.sh boot-recovery.sh; do",
+            "uninstall.sh recovery.sh boot-recovery.sh restart.sh " + " ".join(hooks) + "; do")
+    control = module / "control.sh"
+    replace(control, '  mkdir "$LAUNCH_LOCK" 2>/dev/null ||',
+            '  [ ! -f /dev/ksu-restart-stage/busy ] || { echo "KernelSU restart in progress; startup deferred."; exit 0; }\n'
+            '  mkdir "$LAUNCH_LOCK" 2>/dev/null ||')
+    replace(control, "  target_identity=$(identity \"$target\")\n",
+            "  target_identity=$(identity \"$target\")\n"
+            "  [ -z \"${restart_target:-}\" ] || [ \"$target_identity\" = \"$restart_target\" ] || "
+            "fail 'SystemUI changed during the planned restart handoff'\n")
+    replace(control, "  failed=0\n", "  failed=0\n  planned=0\n")
+    replace(control, "    trap - EXIT INT TERM HUP\n",
+            "    trap - EXIT INT TERM HUP\n    planned_restored=0\n")
+    replace(control, '    if [ "$graceful" -eq 1 ] && [ "$failed" -eq 0 ]; then',
+            '    if [ "$planned" -eq 1 ] && [ "$graceful" -eq 1 ] && [ "$failed" -eq 0 ] && allowed; then\n'
+            '      planned_restored=1\n'
+            '    elif [ "$graceful" -eq 1 ] && [ "$failed" -eq 0 ]; then')
+    replace(control, '    rmdir "$LAUNCH_LOCK" 2>/dev/null || true\n  }',
+            '    rmdir "$LAUNCH_LOCK" 2>/dev/null || true\n'
+            '    if [ "$planned_restored" -eq 1 ]; then\n'
+            '      if sh "$MODDIR/restart.sh" complete "$target_identity"; then\n'
+            "        echo 'PREPARED - hooks removed and injector detached; checkbox retained'\n"
+            '      else\n'
+            '        : > "$MODDIR/disable"\n'
+            "        echo 'Planned restart cleanup was not verified; fully reboot before retrying.' > \"$MODDIR/failure\"\n"
+            '      fi\n    fi\n  }')
+    replace(control, "    printf 'pulse\\n' >&3 || { failed=1; break; }",
+            "    if [ -f /dev/gxr-window-curvature-restart/request ] &&\n"
+            '        sh "$MODDIR/restart.sh" requested "$target_identity"; then planned=1; break; fi\n'
+            "    printf 'pulse\\n' >&3 || { failed=1; break; }")
+    replace(control, '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi\n',
+            '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi\n'
+            '  clear_after_reboot || exit 1\n')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM, help="Pinned upstream URL or local clone")
@@ -147,7 +273,7 @@ def main() -> None:
         props = module / "module.prop"
         replace(props, "version=0.1.3-experimental", "version=0.1.6-azj2-experimental")
         replace(props, "versionCode=103", "versionCode=107")
-        replace(props, "author=BlueScorpioVR", "author=BlueScorpioVR; AZJ2 port by nathalie")
+        replace(props, "author=BlueScorpioVR", "author=BlueScorpioVR; AZJ2 port by booinspace")
         replace(props,
                 "updateJson=https://raw.githubusercontent.com/BlueScorpioVR/galaxyxr-modules/main/updates/window-curvature.json\n",
                 "")
@@ -168,6 +294,8 @@ def main() -> None:
                     "description=Experimental AZJ2 curvature with original rim hiding and hover caption after 45 seconds. One injector; installs disabled. Keep separate Borderless off.")
             (module / "agent/borderless.mjs").write_bytes(
                 (ROOT / "scripts/curvature-borderless-agent.mjs").read_bytes())
+            shutil.copyfile(ROOT / "scripts/curvature/CaptionVisibility.java",
+                            module / "android/local/gxr/curvature/CaptionVisibility.java")
             main_agent = module / "agent/main.js"
             replace(main_agent, "import {DEX_BASE64} from './helper-dex.js';",
                     "import {DEX_BASE64} from './helper-dex.js';\n"
@@ -192,7 +320,8 @@ def main() -> None:
                     "                            log('BORDERLESS_PENDING', {delaySeconds: 45});\n"
                     "                            borderlessTimer = setTimeout(() => Java.perform(() => {\n"
                     "                                if (stopped) return;\n"
-                    "                                try { borderless = installBorderless(Java, fail); }\n"
+                    "                                try { borderless = installBorderless(Java, fail,\n"
+                    "                                    factory.use('local.gxr.curvature.CaptionVisibility')); }\n"
                     "                                catch (error) { fail(error); }\n"
                     "                            }), 45000);\n"
                     "                            resolve(true);")
@@ -222,6 +351,13 @@ def main() -> None:
                             str(main_agent)], check=True)
         if args.integrated_rotation:
             integrate_rotation(module)
+            patch_art_cmc(work, module)
+            integrate_recovery(work, module)
+            integrate_restart(work, module)
+            subprocess.run([sys.executable, str(ROOT / "tests/curvature-boot-recovery.test.py"),
+                            str(module)], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/curvature-restart.test.py"),
+                            str(module)], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-controls-conflicts.test.py"),
                             str(module / "control.sh")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/rotation-controller-host.test.py"),
@@ -256,7 +392,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = "0.1.9" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
+        version = "0.1.15" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
         package = args.output / f"gxr-window-curvature-{version}-azj2-experimental-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)

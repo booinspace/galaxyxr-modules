@@ -3,7 +3,10 @@
 The combined module adds curvature, borderless app windows, a hover-only
 caption pill, and pitch/yaw/roll controls to ordinary Home Space Android
 windows. It uses one supervised Frida injector and one Java-owned menu.
-The user confirmed the combined features work on the AZJ2 headset.
+The current window runtime resumed automatically after two consecutive GXR Soft
+restarts on the AZJ2 headset, with its enabled state retained. The 90-second
+startup gate is a workaround for a native startup crash whose cause remains
+undetermined. Extended idle/wake stability remains unverified.
 
 This is a **KernelSU GXR module ZIP**. It requires an active temporary root
 session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
@@ -17,15 +20,67 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 2. In **Modules → Install from storage**, choose the combined ZIP. It installs
    disabled. Use an in-place update; if the existing module is pending
    deletion, tap **Undo**, leave it off, then retry installation.
-3. Enable **Galaxy XR Curvature + Borderless + Rotation** and use one GXR
-   **Soft restart** to dispatch services.
+3. Enable **Galaxy XR Curvature + Borderless + Rotation** and tap its
+   **Action** once to start it. Future GXR Soft restarts use the coordinated
+   handoff described below and restart the module automatically.
 4. Wait **45 seconds**, fully close an ordinary app window and launch it again.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The verified headset copy is `/sdcard/Download/Combined-0.1.9-ROTATION.zip`,
-25,439,558 bytes (25.44 MB), SHA-256
-`889e8fdae4977889092a459cc78adef0e39fb0f3186a8d8f3e514cbe17baf916`.
+The current short filename is `Combined-0.1.15-booinspace.zip`.
+Verify its checksum against the builder's `.sha256` sidecar before copying.
+
+## After a cold boot
+
+Leave the combined module enabled across normal shutdowns. Regain temporary
+root with DirtyFrag Autorun off. When the root manager starts module services,
+the combined module checks its payload and firmware, exports the previous
+boot's diagnostics, acknowledges that old quarantine and starts once.
+
+If services have not started it, tap the combined module's **Action**. Action
+starts it when enabled and not already starting/running, waits up to 30 seconds
+for status, then exports logs. This start does not require a Soft restart or
+the separate Recovery helper. Action starts the runtime; it is not just a
+recovery/status screen. Allow the usual 45-second Borderless delay and recreate
+an app window afterward.
+
+A crash still disables the module. After a full reboot, regain root, enable
+it and tap **Action**. The module never turns its own checkbox on. A Soft
+restart cannot clear an unexpected crash's quarantine.
+Missing/malformed identities, conflicting session records, a live runtime,
+another injector or failed firmware/payload checks prevent automatic recovery.
+
+## Planned Soft restarts
+
+KernelSU GXR's four restart phases stop the running agent before Android is
+stopped. The agent must acknowledge flat curvature, restored orientation and
+caption cleanup; its injector must detach and its supervisor must exit. The
+module keeps its checkbox enabled during this planned stop.
+
+The stopped phase checks that the old SystemUI process has exited. The started
+phase records the new process identity after Android has booted. Once the
+coordinator marks that restart ready, the service waits until that exact
+replacement process is at least 90 seconds old before consuming its one-use
+authorization and attaching again. The wait does not change the selected
+process or accept a later generation. Action can report STARTING during this
+wait. Allow up to 150 seconds after Home Space returns, then recreate an app
+window; Borderless still attaches 45 seconds after the agent starts.
+Do not request another restart while startup is pending. Individual curve/rotation
+choices are not preserved when Android recreates the windows.
+
+An incomplete cleanup, cancelled restart, changed target, stale generation,
+manual disable or unexpected crash does not receive that authorization. The
+module does not restart Android itself or turn its checkbox back on. A failed
+handoff can require a full reboot. Uncoordinated `stop`/`start` commands are not
+supported. Temporary root still has to be regained after a full power-off.
+
+Device validation on 12 November 2026 covered two consecutive Soft restarts in
+one full boot. Exported diagnostics and live process checks confirmed successful
+restart hooks, distinct replacement SystemUI identities, consumed one-use
+handoffs and no current disable/failure markers. After the second restart, the
+user confirmed curve/tilt menus, rim/pill hiding, dragging and app input before
+pressing Action. Release 0.1.15 updates author metadata; its runtime files
+match the tested 0.1.14 build byte for byte.
 
 ## Use
 
@@ -56,9 +111,24 @@ The runtime checks SM-I610 and these exact stock SHA-256 values:
 | `/system_ext/lib64/libspaceflinger_jni_vulkan.so` | `8342a55dd62163af3653dcf2153a842e243377897ced3ca00703603d275a3d7f` |
 | `/system_ext/lib64/libImpress-jni-vulkan.so` | `ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42` |
 | `/system/framework/framework.jar` | `6ec625a07d94e3e50d82eea14bcec05425de303a62a512e6b82ae57881c46ad7` |
+| `/apex/com.android.art/lib64/libart.so` | `afc9dde61f50e1e2b085c886e2bad7df98c433b28e0f01041221e1d138c321c5` |
 
 The module refuses mismatches. A firmware update requires inspection and a
 new build. No stock APK or native library is replaced.
+
+The shared Java bridge includes pandasauce's
+[ART/CMC allocation fix](https://github.com/frida-packages/frida-java-bridge/pull/410)
+at commit `fcdd7186467e8c6dfdcef888208807c9fc0424db`, with a local guard
+that refuses CMC method cloning if its allocator is unavailable. The upstream
+PR is open. Samsung's exact ART image was inspected to confirm that this
+allocator uses tracked LinearAlloc storage. The patch, original npm source,
+credits and hashes are included in the ZIP.
+
+The [disposable GC test](../tests/art-cmc/README.md) reproduced a native
+`ReferenceMapVisitor::VisitFrame` crash with the original bridge while a hooked
+method remained on the stack during CMC collection. The patched bridge passed
+20,000 calls with the same test. This supports the fix; it does not establish
+long-term SystemUI stability.
 
 Curvature uses the pinned BlueScorpioVR native hooks and helper. Borderless
 suppresses task window rims through `CPM.NodeUpdates` and keeps the caption's
@@ -70,6 +140,9 @@ Curvature owns the combined menu's size, surface crop and dismissal. The
 common heartbeat supplies Home Space eligibility and waits for curvature,
 orientation and caption cleanup before detaching. Separate window runtimes
 and competing injectors are rejected before attachment.
+Caption changes run on each view's owning thread. Borderless uses the common
+monotonic heartbeat rather than a separate wall-clock deadline that expires
+while the headset sleeps.
 
 The intended scope is ordinary 2D Home Space windows. Other firmware,
 immersive/system window behavior, extended stability and every app's input
@@ -83,27 +156,30 @@ state through **Action** and keeps quarantine markers when restoration is
 unverified. Because stock rim restoration requires process recreation, fully
 reboot with DirtyFrag Autorun off before resetting or replacing the runtime.
 
-Install `releases/gxr-curvature-recovery-0.1.2-disabled.zip` through KernelSU
-GXR, then enable Recovery so its **Action** button is available. Recovery's
-startup scripts do not attach to SystemUI. After a full reboot, regain root,
-leave the window module off and run **Recovery → Action**. Quarantine can only
-be acknowledged after the full boot ID changes; Soft restart does not change
-that ID.
-
-Recovery also exports logs. If used while the window module is running, it can
-print **Disable curvature before reset** after copying them; that message
-concerns resetting quarantine. The exported files can be collected over ADB:
+Recovery and diagnostic export are bundled. Use the combined module's
+**Action** to see its status and export logs while running. Export does not
+reset a live session. Startup archives previous-boot `runtime.log`, `failure`
+and `session-open` files before acknowledging them, and keeps the checkbox as
+you set it. The exported files can be collected over ADB:
 
 ```sh
 adb pull /data/local/tmp/gxr-curvature-runtime.log
 adb pull /data/local/tmp/gxr-curvature-failure
 adb pull /data/local/tmp/gxr-curvature-session-open
+adb pull /data/local/tmp/gxr-window-diagnostics.txt
 ```
 
 An absent failure file is normal. Check export timestamps before interpreting
 saved copies. Logs can contain app/task identifiers. Avoid another Soft
-restart while the window runtime is attached; stop it and follow the full
-reboot/reset procedure instead.
+restart while the window runtime is attached; stop it and fully reboot instead.
+
+When upgrading from an older build, keep the existing Recovery helper until
+the new combined package is installed and verified. An old controller may
+still require its quarantine to be acknowledged before accepting an update.
+After that one-time migration, the separate Recovery helper can be uninstalled.
+For 0.1.12, which cannot reset its own disabled quarantine through its Action
+screen, `Recovery-ONCE-0.1.5.zip` can perform that cleanup after a full reboot
+before installing this update. Keep the old window module off during cleanup.
 
 ## Build
 
@@ -124,7 +200,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.9-azj2-experimental-disabled.zip`
+The output is `gxr-window-curvature-0.1.15-azj2-experimental-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
@@ -135,8 +211,19 @@ Bundled documentation and source receipts contribute to the ZIP checksum.
 The build runs upstream policy/mesh and Java safety tests plus local checks
 for node ownership, wrapper replacement, cleanup retry, heartbeat expiry,
 rotation math, shared failure handling and competing-window-runtime guards.
+Recovery checks cover previous-boot archival, same-boot refusal, identity
+validation, active runtimes, both integrity gates, disabled/removal markers,
+duplicate starts and Action's start/export behavior.
+The Linux restart test uses disposable processes and a fake injector to check
+two complete handoffs, unchanged enabled state, replay rejection, changed
+targets, missing cleanup acknowledgement and aborted/idle restarts. These
+tests do not simulate the Android renderer or establish device compatibility.
+Age-gate tests use a controlled uptime input to verify the wait, preserve the
+unused authorization, and reject changed processes, generations and invalid
+clock data before attachment.
 The disabled-package verifier checks checksums, executable modes, ARM64/Dex
-layout and all four firmware pins.
+layout and all five firmware pins. The CMC patch is checked before applying
+it and its exact hash is recorded in `build.json`.
 
 Build Recovery with `python3 scripts/build-curvature-recovery.py` and run its
 host check with `python3 tests/curvature-recovery.test.py`.

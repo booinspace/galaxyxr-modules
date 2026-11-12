@@ -30,6 +30,7 @@ class CurvatureRecoveryTest(unittest.TestCase):
                 .replace("/data/adb/gxr-", str(root / "gxr-"))
                 .replace("/data/local/tmp", str(root / "localtmp"))
                 .replace("/dev/gxr-borderless-azj2", str(root / "borderless-state"))
+                .replace("/dev/ksu-restart-stage", str(root / "restart-state"))
                 .replace("/proc/sys/kernel/random/boot_id", str(root / "boot_id"))
                 .replace("/system/bin/sh", "/bin/sh")
             )
@@ -51,6 +52,7 @@ class CurvatureRecoveryTest(unittest.TestCase):
 
             curvature = root / "modules/gxr_window_curvature"
             curvature.mkdir()
+            (curvature / "module.prop").write_text("id=gxr_window_curvature\nversion=0.1.9\n")
             (curvature / "disable").touch()
             (curvature / "failure").write_text("quarantined\n")
             (curvature / "session-open").write_text("old:123:456\n")
@@ -74,6 +76,10 @@ class CurvatureRecoveryTest(unittest.TestCase):
 
             self.assertEqual(run("status").strip(), "GXR_UPDATE_STATE=STOCK")
             self.assertEqual(run("off").strip(), "GXR_UPDATE_STATE=STOCK")
+            self.assertIn("Exported", run("export"))
+            self.assertTrue(diagnostic.exists())
+            self.assertTrue((curvature / "failure").exists())
+            self.assertTrue((borderless / "failure").exists())
             self.assertIn("Full reboot required", run())
             self.assertFalse(diagnostic.exists())
             self.assertTrue((root / "gxr-curvature-diagnostics-0.1.0-backup").exists())
@@ -90,6 +96,19 @@ class CurvatureRecoveryTest(unittest.TestCase):
             self.assertFalse((borderless / "failure").exists())
             self.assertFalse((borderless / "runtime.log").exists())
             self.assertEqual(len(list(borderless.glob("runtime.pre-reset.*.log"))), 1)
+            report = (root / "localtmp/gxr-window-diagnostics.txt").read_text()
+            self.assertIn("BOOT=new", report)
+            self.assertIn("version=0.1.9", report)
+            self.assertIn("MARKER=failure", report)
+            self.assertIn("MARKER=session-open", report)
+            # A subsequent export must remove copies of markers that no longer exist.
+            self.assertIn("no quarantine marker", run())
+            self.assertFalse((root / "localtmp/gxr-curvature-failure").exists())
+            self.assertFalse((root / "localtmp/gxr-curvature-session-open").exists())
+            self.assertFalse((root / "localtmp/gxr-borderless-failure").exists())
+            report = (root / "localtmp/gxr-window-diagnostics.txt").read_text()
+            self.assertNotIn("MARKER=failure", report)
+            self.assertNotIn("MARKER=session-open", report)
 
 
 if __name__ == "__main__":

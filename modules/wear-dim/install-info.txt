@@ -1,0 +1,5 @@
+AZJ2 wear-aware dimming: installs DISABLED; standalone process, no SystemUI injection.
+Enable this module, then tap Action. No Soft restart required.
+Remove the headset for 3 seconds, then put it back on to clear any existing sleep countdown.
+After 60 seconds without eyes, dims to 20% of current brightness; eyes returning restores it.
+Normal proximity removal, manual sleep, low-battery and thermal shutdown remain in place.

@@ -11,6 +11,8 @@ with tempfile.TemporaryDirectory(prefix="gxr-window-conflicts-") as temporary:
     root = Path(temporary)
     module = root / "module"
     module.mkdir()
+    (root / "dev").mkdir()
+    (module / "boot-recovery.sh").write_text(Path(sys.argv[1]).with_name("boot-recovery.sh").read_text())
     commands = root / "commands"
     commands.mkdir()
     for name, body in {

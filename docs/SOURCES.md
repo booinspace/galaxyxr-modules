@@ -9,7 +9,9 @@ BlueScorpioVR designed and wrote that implementation.
 
 The local integration supplies the AZJ2 firmware gate, shared borderless and
 hover-caption hooks, pitch/yaw/roll helper, combined menu ownership and
-coordinated cleanup. The borderless and rotation APIs were inspected in the
+coordinated cleanup, built-in previous-boot recovery, diagnostic export and
+the module-side planned-restart handoff for KernelSU GXR's restart phases.
+The borderless and rotation APIs were inspected in the
 stock AZJ2 SystemUI and framework from the user's SM-I610. Proprietary
 firmware binaries are not distributed in this repository.
 
@@ -28,6 +30,14 @@ Runtime and build components:
 - [frida-java-bridge 7.0.13](https://www.npmjs.com/package/frida-java-bridge/v/7.0.13):
   bundled once in the shared agent, with its original archive and pinned
   SHA-512 recorded by the builder.
+- [pandasauce's ART/CMC allocation patch](https://github.com/frida-packages/frida-java-bridge/pull/410),
+  commit `fcdd7186467e8c6dfdcef888208807c9fc0424db`: keeps copied ArtMethods
+  in ART's tracked LinearAlloc storage so CMC can update their class pointers.
+  The combined build includes this open upstream patch with a local guard
+  against a missing allocator. Patch SHA-256:
+  `354bec3059c53cf9f83d3d8f3dcc81417654c0a2620bfac188c52e0092ba84bd`.
+  Both the patch and original npm archive are included for source availability;
+  the bridge's existing license remains applicable.
 - [ECJ 3.39.0](https://repo.maven.apache.org/maven2/org/eclipse/jdt/ecj/3.39.0/)
   and [Android D8/R8](https://developer.android.com/tools/d8): host Java/DEX
   build tools. They are not installed on the headset.
@@ -48,3 +58,13 @@ compatibility checks and builds.
 The separate [Galaxy XR root project](https://git.puppy.boo/nathalie/galaxyxr-root)
 credits DirtyFrag, KernelSU GXR and Samsung kernel sources. Root acquisition
 is not bundled into these modules.
+
+## Wear-aware dimming and firmware hold
+
+[Wear-aware dimming](../modules/wear-dim/) is by
+[booinspace](https://github.com/booinspace), using the existing local port
+supervisor and inspection of stock AZJ2 `EyesMonitor`,
+`ProximitySensorManager`, `CPM.SystemInputInfo` and DisplayManager APIs.
+It adds no SystemUI injector and includes no proprietary firmware binaries.
+The [firmware hold](FIRMWARE-HOLD.md) uses the device's existing package-manager
+controls for the two verified Samsung OTA agents.

@@ -6,7 +6,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "modules/curvature-recovery"
-OUTPUT = ROOT / "releases/gxr-curvature-recovery-0.1.2-disabled.zip"
+OUTPUT = ROOT / "releases/gxr-curvature-recovery-0.1.5-disabled.zip"
 
 
 def main() -> None:

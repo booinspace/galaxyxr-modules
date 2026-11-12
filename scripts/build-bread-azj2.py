@@ -95,7 +95,7 @@ def main():
             payload["bin/build-info.json"] = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
             payload["SHA256SUMS"] = "".join(f"{sha(data)}  {path}\n" for path, data in sorted(payload.items())
                                             if path != "disable").encode()
-            output = args.output / f"gxr-{name}-azj2-0.1.0-disabled.zip"
+            output = args.output / f"gxr-{name}-azj2-0.1.1-disabled.zip"
             with ZipFile(output, "w", ZIP_DEFLATED) as archive:
                 for path, data in sorted(payload.items()):
                     entry = ZipInfo(path, (2026, 11, 11, 0, 0, 0))
