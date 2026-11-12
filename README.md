@@ -25,6 +25,10 @@ menu opens and adds grab diagnostics. That change still needs a device test;
 it does not fix Samsung's untilted grab outline. Keep the working 0.1.18
 installation while boundary alignment is investigated separately.
 
+The separate [0.1.20 boundary experiment](docs/EXPERIMENTAL-BOUNDARY.md) aims to
+make Samsung's movement outline follow the window transform. It has host checks
+but no headset validation; it is not part of the tested 0.1.18 installation.
+
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
 | Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |

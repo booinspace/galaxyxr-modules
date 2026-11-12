@@ -5,11 +5,13 @@ import {parseFeatureCommand, applyFeatureSettings} from '../scripts/curvature-fe
 
 const source = readFileSync(process.argv[2], 'utf8').replace(/^import .*;\n/gm, '');
 const withRotation = process.argv.includes('--rotation');
+const withBoundary = process.argv.includes('--boundary');
 
 function session() {
     const timers = new Map(), intervals = new Map(), logs = [];
     let attached = 0, pulses = 0, stopRequests = 0, restored = false, id = 0;
     let rotationRestored = false, rotationStops = 0, rotationError = '', home = true;
+    let boundaryRestored = !withBoundary, boundaryStops = 0, boundaryDisposals = 0;
     const rotationPulses = [];
     const rotation = {
         setEnabled() {}, setGrabEnabled() {},
@@ -41,6 +43,8 @@ function session() {
     const context = {
         parseFeatureCommand, applyFeatureSettings,
         installGrabRotation: () => ({setEnabled() {}, pulse() {}, stop() {}}),
+        installBoundaryAlignment: () => ({stop() { boundaryStops++; }, isRestored: () => boundaryRestored,
+            dispose() { assert.ok(boundaryRestored); boundaryDisposals++; }}),
         Java: {
             use(name) { assert.ok(classes[name], name); return classes[name]; },
             ClassFactory: {get: () => factory}, perform: cb => cb(), retain: value => value,
@@ -68,6 +72,8 @@ function session() {
         rotationStops: () => rotationStops, restoreRotation() { rotationRestored = true; },
         rotationFailure() { rotationError = 'orientation update failed'; },
         leaveHome() { home = false; },
+        restoreBoundary() { boundaryRestored = true; },
+        boundaryStops: () => boundaryStops, boundaryDisposals: () => boundaryDisposals,
     };
 }
 
@@ -81,6 +87,7 @@ assert.equal(cancelled.timers.size, 0);
 pending();
 assert.equal(cancelled.attached(), 0, 'cancelled or stale delayed callback must not attach');
 cancelled.restoreRotation();
+cancelled.restoreBoundary();
 cancelled.context.pollAgent();
 assert.equal(cancelled.intervals.size, 0);
 
@@ -107,7 +114,15 @@ if (withRotation) {
     assert.equal(running.rotationStops(), 1);
 }
 running.restoreRotation();
+if (withBoundary) {
+    running.context.pollAgent();
+    assert.equal(running.intervals.size, 1, 'must wait for native boundary restoration');
+    assert.equal(running.boundaryStops(), 1);
+    assert.equal(running.boundaryDisposals(), 0);
+}
+running.restoreBoundary();
 running.context.pollAgent();
+if (withBoundary) assert.equal(running.boundaryDisposals(), 1);
 assert.equal(running.intervals.size, 0);
 assert.ok(running.logs.some(line => line.startsWith('GXR_CURVATURE_STOPPED')));
 console.log('PASS: 45-second delayed attach, cancelled startup, pulses, and restoration before detach');
@@ -120,7 +135,7 @@ if (withRotation) {
     assert.equal(failed.rotationStops(), 1);
     assert.equal(failed.stopRequests(), 1);
     assert.ok(failed.logs.some(line => line.startsWith('GXR_CURVATURE_FATAL')));
-    failed.restored(); failed.restoreRotation(); failed.context.pollAgent();
+    failed.restored(); failed.restoreRotation(); failed.restoreBoundary(); failed.context.pollAgent();
     assert.equal(failed.intervals.size, 0, 'rotation error must not starve other cleanup');
     console.log('PASS: shared rotation eligibility, failure propagation, and orientation rollback acknowledgment');
 }

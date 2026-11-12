@@ -1,0 +1,179 @@
+// Column-major composition preserves Samsung's own boundary size and offset.
+export function boundaryTransform(window, visual) {
+    for (const matrix of [window, visual]) {
+        if (matrix.length !== 16 || !matrix.every(v => Number.isFinite(v) && Math.abs(v) <= 1e6) ||
+            [3, 7, 11].some(i => Math.abs(matrix[i]) > 1e-5) || Math.abs(matrix[15] - 1) > 1e-5) {
+            throw new Error('Invalid boundary transform');
+        }
+    }
+    return Array.from({length: 16}, (_, i) => {
+        const row = i % 4, column = Math.floor(i / 4);
+        return [0, 1, 2, 3].reduce((sum, k) => sum + window[k * 4 + row] * visual[column * 4 + k], 0);
+    });
+}
+
+/** Experimental visual alignment; never changes stock drag events or the app node. */
+export function installBoundaryAlignment(allowed, onError) {
+    const renderer = Process.getModuleByName('libspaceflinger_jni_vulkan.so');
+    const impress = Process.getModuleByName('libImpress-jni-vulkan.so');
+    function address(module, symbol, offset) {
+        const value = module.getExportByName(symbol);
+        if (!value.equals(module.base.add(offset))) throw new Error('AZJ2 boundary symbol mismatch: ' + symbol);
+        return value;
+    }
+    function native(symbol, offset, result) {
+        return new NativeFunction(address(impress, symbol, offset), result, ['pointer']);
+    }
+    const getNode = native('_ZNK3imp9Component7GetNodeEv', 0x12e24f8, ['uint64', 'pointer']);
+    const valid = native('_ZNK3imp10NodeHandle7IsValidEv', 0x12f1964, 'bool');
+    const parent = native('_ZNK3imp4Node9GetParentEv', 0x12ec70c, ['uint64', 'pointer']);
+    const getName = native('_ZNK3imp4Node7GetNameEv', 0x12ebe2c, ['pointer', 'ulong']);
+    const getChildren = native('_ZNK3imp4Node11GetChildrenEv', 0x12ec75c, ['pointer', 'pointer', 'pointer']);
+    const getTrs = native('_ZNK3imp4Node11GetLocalTrsEv', 0x12ecc64, 'pointer');
+    const setTrs = new NativeFunction(address(impress,
+        '_ZN3imp4Node11SetLocalTrsERKN8filament4math7details6TMat44IfEE', 0x12ec510), 'void', ['pointer', 'pointer']);
+    const release = new NativeFunction(Module.getGlobalExportByName('_ZdlPv'), 'void', ['pointer']);
+    const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const records = new Map(), depths = new Map(), hooks = [];
+    let stopping = false, applied = 0;
+    function handle(parts) {
+        const result = Memory.alloc(16);
+        result.writeU64(parts[0]);
+        result.add(8).writePointer(parts[1]);
+        return result;
+    }
+    function same(parts, node) {
+        // NodeHandle's entity is 32 bits; the upper half of the ABI word is padding.
+        return parseInt(parts[0].toString(16).slice(-8), 16) === node.readU32()
+            && parts[1].equals(node.add(8).readPointer());
+    }
+    function name(node) {
+        const [text, length] = getName(node);
+        return length > 0 && length <= 80 && !text.isNull() ? text.readUtf8String(length) : '';
+    }
+    function matrix(node) {
+        const data = getTrs(node);
+        return Array.from({length: 16}, (_, i) => data.add(i * 4).readFloat());
+    }
+    function write(node, values) {
+        const data = Memory.alloc(64);
+        values.forEach((value, i) => data.add(i * 4).writeFloat(value));
+        setTrs(node, data);
+    }
+    function children(node) {
+        const [begin, end] = getChildren(node);
+        try {
+            const bytes = Number(end.sub(begin).toString()), count = bytes / 16;
+            if (!Number.isSafeInteger(bytes) || !Number.isInteger(count) || count < 0 || count > 64) {
+                throw new Error('Invalid boundary child count');
+            }
+            return Array.from({length: count}, (_, i) => {
+                const copy = Memory.alloc(16);
+                Memory.copy(copy, begin.add(i * 16), 16);
+                return copy;
+            });
+        } finally { if (!begin.isNull()) release(begin); }
+    }
+    function pathToWindow(node, target, depth = 0, budget = {remaining: 64}) {
+        if (!valid(node) || --budget.remaining < 0) throw new Error('Invalid boundary scene graph');
+        if (name(node) === target) return [node];
+        if (depth === 4) return null;
+        for (const child of children(node)) {
+            const found = pathToWindow(child, target, depth + 1, budget);
+            if (found !== null) return [node, ...found];
+        }
+        return null;
+    }
+    function restore(component, discard = false) {
+        const key = component.toString(), record = records.get(key);
+        if (record === undefined) return;
+        if (record.baseline !== null && valid(record.node)) write(record.node, record.baseline);
+        record.baseline = null;
+        if (discard) records.delete(key);
+    }
+    function apply(component) {
+        if (stopping) return;
+        const key = component.toString();
+        let record = records.get(key);
+        if (record === undefined) {
+            const node = handle(getNode(component));
+            if (!valid(node)) return;
+            const owner = handle(parent(node));
+            if (!valid(owner)) return;
+            const match = /^space-transform-task-(\d+)$/.exec(name(owner));
+            if (match === null || !allowed(Number(match[1]))) return;
+            const path = pathToWindow(owner, 'window-task-' + match[1]);
+            if (path === null) return;
+            if (records.size >= 64) throw new Error('Too many boundary visuals');
+            record = {node, path, task: Number(match[1]), baseline: null};
+            records.set(key, record);
+        }
+        if (!allowed(record.task) || record.path.some(node => !valid(node)) || !valid(record.node)) {
+            records.delete(key);
+            return;
+        }
+        // A stock transition can replace or reparent nodes between frames.
+        if (!same(parent(record.node), record.path[0]) || record.path.slice(1).some((node, i) =>
+            !same(parent(node), record.path[i]))) { records.delete(key); return; }
+        let window = identity;
+        for (const node of record.path.slice(1)) window = boundaryTransform(window, matrix(node));
+        if (window.every((value, i) => Math.abs(value - identity[i]) < 1e-6)) return;
+        // SetLocalTrs decomposes TRS; a skewed or collapsed transition is not representable.
+        const columns = [0, 4, 8].map(i => window.slice(i, i + 3));
+        const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+        const scale = dot(columns[0], columns[0]);
+        if (scale < 1e-10 || columns.some(c => Math.abs(dot(c, c) - scale) > scale * 1e-4) ||
+            [[0, 1], [0, 2], [1, 2]].some(([a, b]) => Math.abs(dot(columns[a], columns[b])) > scale * 1e-4)) return;
+        const baseline = matrix(record.node);
+        const aligned = boundaryTransform(window, baseline);
+        record.baseline = baseline;
+        write(record.node, aligned);
+        if (++applied === 1) console.log('GXR_BOUNDARY_ALIGNED task=' + record.task);
+    }
+    function guarded(operation) {
+        try { operation(); }
+        catch (error) { stopping = true; onError(error); }
+    }
+    const visuals = [
+        ['15HighlightVisual', 0x4f2c870, 0x4f2cf6c, 0x4d27464, 0x4d27534],
+        ['23ResizePlaceholderVisual', 0x4f35580, 0x4f353c8, 0x4d83ce8, 0x4d83db8],
+    ];
+    // All symbols are resolved before attaching; full library hashes are pinned by control.sh.
+    const targets = visuals.map(([type, update, resize, active, cleanup]) => [
+        [`_ZN2ix6moohan5sysui${type}6UpdateERKN3imp9FrameTimeE`, update],
+        [`_ZN2ix6moohan5sysui${type}21UpdateSizeAndPositionERKN8filament4math7details5TVec2IfEERKNS5_5TVec3IfEE`, resize],
+        [`_ZN3imp13ComponentPoolIN2ix6moohan5sysui${type}EE12NotifyActiveEPNS_9ComponentEb`, active],
+        [`_ZN3imp13ComponentPoolIN2ix6moohan5sysui${type}EE7CleanupERNS_9ComponentE`, cleanup],
+    ].map(([symbol, offset]) => address(renderer, symbol, offset)));
+    try {
+        for (const [update, resize, active, cleanup] of targets) {
+            for (const target of [update, resize]) hooks.push(Interceptor.attach(target, {
+                onEnter(args) {
+                    this.component = args[0];
+                    const key = this.component.toString(), depth = depths.get(key) || 0;
+                    depths.set(key, depth + 1);
+                    if (depth === 0) guarded(() => restore(this.component));
+                },
+                onLeave() {
+                    const key = this.component.toString(), depth = depths.get(key) - 1;
+                    if (depth > 0) { depths.set(key, depth); return; }
+                    depths.delete(key);
+                    guarded(() => apply(this.component));
+                },
+            }));
+            hooks.push(Interceptor.attach(active, {onEnter(args) {
+                if ((args[2].toInt32() & 1) === 0) guarded(() => restore(args[1], true));
+            }}));
+            hooks.push(Interceptor.attach(cleanup, {onEnter(args) { guarded(() => restore(args[1], true)); }}));
+        }
+    } catch (error) { for (const hook of hooks) hook.detach(); throw error; }
+    return {
+        stop() { stopping = true; },
+        isRestored() { return stopping && depths.size === 0 && [...records.values()].every(r => r.baseline === null); },
+        dispose() {
+            if (!this.isRestored()) throw new Error('Boundary cleanup still pending');
+            for (const hook of hooks) hook.detach();
+            records.clear();
+        },
+    };
+}
