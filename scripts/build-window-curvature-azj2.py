@@ -232,6 +232,34 @@ def integrate_restart(work: Path, module: Path) -> None:
     replace(control, '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi\n',
             '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi\n'
             '  clear_after_reboot || exit 1\n')
+    replace(control,
+            '    elif [ "$graceful" -eq 1 ] && [ "$failed" -eq 0 ]; then',
+            '    elif [ "$graceful" -eq 1 ] && [ "$failed" -eq 0 ] &&\n'
+            '        printf "%s\\n" "$target_identity" > "$MODDIR/clean-stop.new" &&\n'
+            '        mv "$MODDIR/clean-stop.new" "$MODDIR/clean-stop"; then')
+    replace(control,
+            '  [ "$(cat "$MODDIR/injected-identity" 2>/dev/null || true)" != "$target_identity" ] || fail \'Already attached to this SystemUI incarnation; reboot before re-enabling\'',
+            '  if [ "$(cat "$MODDIR/injected-identity" 2>/dev/null || true)" = "$target_identity" ]; then\n'
+            '    if sh "$MODDIR/restart.sh" needs-restart; then\n'
+            '      echo "WAITING - use one GXR Soft restart to load the updated runtime."; exit 0\n'
+            '    fi\n'
+            '    fail "Already attached to this SystemUI incarnation; reboot before re-enabling"\n'
+            '  fi\n'
+            '  rm -f "$MODDIR/clean-stop"')
+    replace(control,
+            '  else echo \'Runtime not running.\'; fi',
+            '  elif sh "$MODDIR/restart.sh" needs-restart; then\n'
+            '    echo "WAITING - use one GXR Soft restart to load the updated runtime."\n'
+            '  else echo \'Runtime not running.\'; fi')
+    replace(control,
+            '  while owns_state && [ "$n" -lt 18 ]; do',
+            '  while { owns_state || [ -d "$LAUNCH_LOCK" ]; } && [ "$n" -lt 18 ]; do')
+    replace(control,
+            '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi',
+            '  if owns_state || [ -d "$LAUNCH_LOCK" ]; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi')
+    replace(control,
+            '  if ! owns_state && [ ! -f "$MODDIR/session-open" ] && [ ! -f "$MODDIR/failure" ]; then',
+            '  if [ ! -d "$STATE" ] && [ ! -d "$LAUNCH_LOCK" ] && [ ! -f "$MODDIR/session-open" ] && [ ! -f "$MODDIR/failure" ]; then')
 
 
 def integrate_features(work: Path, module: Path) -> None:
@@ -324,12 +352,12 @@ def integrate_features(work: Path, module: Path) -> None:
 def integrate_boundary(module: Path) -> None:
     """Align the stock boundary and corner selection with the rotated window."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.24-azj2")
-    replace(module / "module.prop", "versionCode=120", "versionCode=125")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.25-azj2")
+    replace(module / "module.prop", "versionCode=120", "versionCode=126")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
             "name=Galaxy XR Window Controls")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls with Action settings",
-            "description=AZJ2 window controls with aligned grab and resize boundaries, Action settings")
+            "description=AZJ2 window controls with 10x movement distance, aligned grab and resize boundaries, Action settings")
     replace(module.parents[1] / "tools/build_window_curvature.py",
             "'kind': 'disabled-experimental-kernelsu-module'", "'kind': 'disabled-kernelsu-module'")
     pins = module / "firmware.sha256"
@@ -351,7 +379,8 @@ def integrate_boundary(module: Path) -> None:
     replace(agent, "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);",
             "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);\n"
             "                            boundary = installBoundaryAlignment(id => !stopped && featureValues[2]\n"
-            "                                && boundaryTasks.has(id) && nowMs() < boundaryDeadline, fail);")
+            "                                && boundaryTasks.has(id) && nowMs() < boundaryDeadline, fail,\n"
+            "                                id => !stopped && boundaryTasks.has(id) && nowMs() < boundaryDeadline);")
     replace(agent, "                rotation.pulse(home);",
             "                rotation.pulse(home);\n"
             "                boundaryTasks = new Set(Array.from(rotation.getBoundTaskIds(), Number));\n"
@@ -476,14 +505,15 @@ def main() -> None:
                     "[ ! -d /data/adb/modules/gxr_borderless_azj2 ] || "
                     "fail 'Disable separate Borderless and fully reboot before combined use'\n"
                     "  maximum=${2:-0}")
-            replace(control,
-                    "    if [ \"$graceful\" -eq 1 ] && [ \"$failed\" -eq 0 ]; then\n"
-                    "      rm -f \"$MODDIR/session-open\"\n"
-                    "      echo 'STOPPED - agent confirmed all owned tasks flat; injector detached'",
-                    "    if [ \"$graceful\" -eq 1 ] && [ \"$failed\" -eq 0 ]; then\n"
-                    "      : > \"$MODDIR/disable\"\n"
-                    "      printf '%s\\n' 'Combined rim restoration needs a full reboot before reset.' > \"$MODDIR/failure\"\n"
-                    "      echo 'DISABLED - curvature flattened; reboot to restore stock rims'")
+            if not args.integrated_rotation:
+                replace(control,
+                        "    if [ \"$graceful\" -eq 1 ] && [ \"$failed\" -eq 0 ]; then\n"
+                        "      rm -f \"$MODDIR/session-open\"\n"
+                        "      echo 'STOPPED - agent confirmed all owned tasks flat; injector detached'",
+                        "    if [ \"$graceful\" -eq 1 ] && [ \"$failed\" -eq 0 ]; then\n"
+                        "      : > \"$MODDIR/disable\"\n"
+                        "      printf '%s\\n' 'Combined rim restoration needs a full reboot before reset.' > \"$MODDIR/failure\"\n"
+                        "      echo 'DISABLED - curvature flattened; reboot to restore stock rims'")
             subprocess.run(["node", str(ROOT / "tests/curvature-combined-lifecycle.mjs"),
                             str(main_agent)], check=True)
         if args.integrated_rotation:
@@ -538,7 +568,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.24-azj2" if args.integrated_rotation else
+        version = ("0.1.25-azj2" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],

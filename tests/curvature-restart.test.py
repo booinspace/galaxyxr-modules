@@ -131,6 +131,62 @@ class RestartTest(unittest.TestCase):
         self.coord.joinpath("busy").touch()
         self.coord.joinpath("ready").unlink(missing_ok=True)
 
+    def test_clean_stop_allows_update_and_restart_in_the_same_full_boot(self):
+        target = self.new_target()
+        first = self.launch()
+        old_identity = self.module.joinpath("session-open").read_text()
+        result = subprocess.run(["sh", str(self.module / "control.sh"), "off"], env=self.env,
+                                capture_output=True, text=True, timeout=25)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("GXR_UPDATE_STATE=STOCK", result.stdout)
+        self.wait_for(lambda: first.poll() is not None)
+        self.assertIsNone(target.poll(), 'A clean update does not restart Android')
+        self.assertFalse(self.module.joinpath("session-open").exists())
+        self.assertFalse(self.module.joinpath("failure").exists())
+        self.assertFalse(self.state.exists())
+        self.assertEqual(self.module.joinpath("clean-stop").read_text(), old_identity)
+        self.module.joinpath("disable").unlink()
+        wait = subprocess.run(["sh", str(self.module / "control.sh"), "run"], env=self.env,
+                              capture_output=True, text=True, timeout=5)
+        self.assertEqual(wait.returncode, 0, wait.stdout + wait.stderr)
+        self.assertIn("WAITING", wait.stdout)
+        self.assertFalse(self.module.joinpath("failure").exists())
+        self.begin()
+        self.hook("prepare")
+        self.assertEqual(self.handoff.joinpath("phase").read_text().strip(), "quiesced")
+        target.terminate(); target.wait(timeout=2)
+        self.hook("stopped")
+        self.target = self.new_target()
+        self.hook("started")
+        self.coord.joinpath("busy").unlink()
+        self.coord.joinpath("ready").touch()
+        self.launch()
+        self.assertNotEqual(self.module.joinpath("session-open").read_text(), old_identity)
+        self.assertEqual(self.handoff.joinpath("phase").read_text().strip(), "consumed")
+        self.assertFalse(self.module.joinpath("clean-stop").exists())
+
+    def test_missing_cleanup_acknowledgement_still_blocks_update(self):
+        self.new_target()
+        self.launch()
+        self.root.joinpath("no-ack").touch()
+        result = subprocess.run(["sh", str(self.module / "control.sh"), "off"], env=self.env,
+                                capture_output=True, text=True, timeout=25)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("GXR_UPDATE_STATE=STOCK", result.stdout)
+        self.assertTrue(self.module.joinpath("failure").exists())
+        self.assertTrue(self.module.joinpath("disable").exists())
+
+    def test_same_process_without_clean_stop_proof_cannot_prepare_resume(self):
+        self.new_target(); first = self.launch()
+        result = subprocess.run(["sh", str(self.module / "control.sh"), "off"], env=self.env,
+                                capture_output=True, text=True, timeout=25)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.wait_for(lambda: first.poll() is not None)
+        self.module.joinpath("clean-stop").unlink()
+        self.module.joinpath("disable").unlink()
+        self.begin(); self.hook("prepare", success=False)
+        self.assertFalse(self.handoff.exists())
+
     def ready(self):
         self.coord.joinpath("busy").unlink()
         self.coord.joinpath("ready").touch()

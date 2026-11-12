@@ -29,6 +29,14 @@ old_is_dead() {
 runtime_gone() {
   [ ! -d "$STATE" ] && [ ! -d "$LAUNCH" ] && [ -z "$(pidof frida-inject)" ]
 }
+if [ "${1:-}" = needs-restart ]; then
+  allowed && [ ! -d "$STATE" ] && [ -z "$(pidof frida-inject)" ] &&
+    [ ! -f "$MODDIR/failure" ] && [ ! -f "$MODDIR/session-open" ] || exit 1
+  previous=$(read_file "$MODDIR/injected-identity")
+  valid_identity "$previous" && [ "$previous" = "$(read_file "$MODDIR/clean-stop")" ] &&
+    [ "$previous" = "$(current_target)" ] || exit 1
+  exit 0
+fi
 generation=$(read_file "$COORD/generation")
 printf '%s\n' "$generation" | grep -Eq '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' || exit 1
 phase=${1:-}
@@ -59,9 +67,21 @@ prepare)
         "$(cat /proc/sys/kernel/random/boot_id)":*) echo 'A crashed window session requires a full reboot.'; exit 1 ;;
       esac
     fi
+    if [ "$(read_file "$MODDIR/injected-identity")" = "$(current_target)" ] &&
+        ! sh "$MODDIR/restart.sh" needs-restart; then
+      echo 'Clean shutdown proof is missing; fully reboot before retrying.'
+      exit 1
+    fi
     mkdir "$HANDOFF"
     printf '%s\n' "$generation" > "$HANDOFF/generation"
-    echo idle > "$HANDOFF/phase"
+    if sh "$MODDIR/restart.sh" needs-restart; then
+      previous=$(read_file "$MODDIR/clean-stop")
+      printf '%s\n' "$previous" > "$HANDOFF/old-target"
+      printf '%s\n' "$previous" > "$MODDIR/session-open"
+      echo quiesced > "$HANDOFF/phase"
+    else
+      echo idle > "$HANDOFF/phase"
+    fi
     exit 0
   fi
   [ "$(read_file "$STATE/module-path")" = "$MODDIR" ] || exit 1

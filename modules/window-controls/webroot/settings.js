@@ -49,11 +49,13 @@ function showSettings(text) {
 function showRuntime(data) {
     if (!['RUNNING', 'STARTING', 'STOPPED', 'DISABLED', 'QUARANTINED'].includes(data.runtime) ||
         (data.captionReady !== 0 && data.captionReady !== 1) ||
+        (data.restartRequired !== undefined && data.restartRequired !== 0 && data.restartRequired !== 1) ||
         !['off', 'unknown', 'waiting', 'tracking', 'unavailable'].includes(data.grabRuntime)) {
         throw new Error('Invalid runtime status.');
     }
     document.getElementById('runtime').textContent =
         'Runtime: ' + data.runtime.toLowerCase() + ' · Hand tracking: ' + data.grabRuntime +
+        (data.restartRequired === 1 ? ' · Use one GXR Soft restart to load this update.' : '') +
         (data.runtime === 'STARTING' ? ' · After a Soft restart, waiting for SystemUI’s 90-second startup guard.' : '') +
         (data.runtime === 'RUNNING' ? (data.captionReady === 1 ? ' · App window setup: ready.'
             : ' · App window setup: waiting up to 45 seconds after runtime start. Then close and reopen the app.') : '') +
@@ -70,7 +72,7 @@ document.getElementById('features').addEventListener('submit', event => {
     perform(async () => {
         const values = keys.map(key => document.getElementById(key).checked ? '1' : '0');
         const data = showSettings(await exec('sh ' + modulePath + '/features.sh set ' + values.join(' ')));
-        message(data.runtime === 'RUNNING'
+        message(data.restartRequired === 1 ? 'Saved. Use one GXR Soft restart to load this update.' : data.runtime === 'RUNNING'
             ? 'Saved. Applying to the running module; reopen the window menu.'
             : 'Saved. Enable the module in KernelSU, then start window controls.');
     });

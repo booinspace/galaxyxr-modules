@@ -5,10 +5,13 @@ with a window rotated by the sliders or by hand. It is included in the
 combined build; there is no separate boundary module to install.
 
 On 12 November 2026 the user confirmed boundary alignment on AZJ2, followed
-by working rotated resizing with 0.1.23. Earlier checks covered hand rotation
+by selectable rotated resize corners with 0.1.23. A later test found reversed
+resize motion. Earlier checks covered hand rotation
 in all three axes, retained orientation after release, app input, curvature,
 rim/pill hiding, dragging and planned Soft restart resume. Version 0.1.24
 removes test labels from the package metadata and keeps the 0.1.23 runtime.
+The 0.1.25 candidate fixes the solver frame and adds tenfold movement distance;
+those changes need a headset test.
 Extended idle/wake stability and other firmware remain unverified.
 
 ## Scene ownership and resizing
@@ -24,8 +27,11 @@ the parent space, subtracts the highlight's position and tests four
 axis-aligned corners. Rotating the visual and its collider alone leaves this
 calculation in the old frame. The agent converts the hit point back into the
 corner test's expected coordinates and passes an owned copy only to that
-classifier. The original hit, pointer ray, stock move and resize events are
-unchanged.
+classifier. The resize solver also receives an owned copy of its local-from-
+scene matrix, composed with the inverse content transform. This projects
+both start and current drag rays into the tilted window's frame, so outward
+motion grows the window and inward motion shrinks it. The original hit,
+pointer rays and stock move/resize events are unchanged.
 
 The implementation observes `HighlightVisual` and `ResizePlaceholderVisual`
 in `libsysui_jni_soong_vulkan.so` on their native update thread. It restores
@@ -39,6 +45,14 @@ deadline. Opening the Curve menu is not required. Leaving Home Space,
 disabling rotation or losing the heartbeat revokes eligibility. There is one
 SystemUI injector for curvature, borderless, rotation and boundary alignment.
 
+The movement solver temporarily receives ten times its configured maximum
+distance for a bound ordinary 2D window. The maximum is restored before that
+native call returns, and overlapping calls share one saved baseline so the
+multiplier cannot compound. The near limit is unchanged. The exact
+`ReformHandler` call sites and solver exports are pinned; unrelated callers
+and unbound/system windows retain stock behavior. Distance extension remains
+available with rotation controls switched off.
+
 A curved window still has a rectangular outline. Collapsed or nonuniform
 transition scales are skipped because the stock TRS setter cannot represent
 arbitrary skew. An unexpected injector exit can leave a visual modified until
@@ -49,21 +63,24 @@ if cleanup is uncertain.
 
 Use the [combined build command](CURVATURE.md#build) with
 `--integrated-borderless --integrated-rotation`. The output is
-`gxr-window-curvature-0.1.24-azj2-disabled.zip` and its `.sha256` sidecar.
+`gxr-window-curvature-0.1.25-azj2-disabled.zip` and its `.sha256` sidecar.
 The former `--experimental-boundary` option is accepted for older build
 commands but is no longer needed.
 
 All six [firmware hashes](CURVATURE.md#compatibility-and-runtime) are mandatory.
-The boundary code also checks 18 exported symbol offsets against the inspected
+The boundary code also checks 21 exported symbol offsets against the inspected
 AZJ2 libraries, bounds scene traversal, validates weak node handles and rejects
 invalid matrices. Native point conversion uses the three-float return ABI
-verified by the disposable native check on the ARM64 Mac host.
+verified by the disposable native check on the ARM64 Mac host. The check also
+verifies the by-value optional-matrix argument and owned-copy lifetime used by
+the resize solver.
 
 The build runs transform tests for pitch/yaw/roll, scale and translation;
 selection of all four rotated corners; unchanged original hits and body
 dragging; nested updates; stock resize changes; stale handles and hierarchies;
 eligibility loss; cleanup acknowledgement; vector release; and symbol mismatch
-rejection. It also runs the existing shared runtime, restart and rollback
+rejection, signed inward/outward resize motion, temporary range restoration
+and non-compounding nested calls. It also runs the existing shared runtime, restart and rollback
 checks. Host tests do not establish compatibility with another firmware or
 long-term headset stability.
 
@@ -76,7 +93,9 @@ top menu can bind it earlier but does not retrofit its rim/pill hooks.
 
 Each periodic `GXR_CURVATURE_STATE` entry includes a `boundary` object with
 the renderer name, visual callback counts, resize calls, corrected corner-test
-and corner-result counts (`resizeHitTests` and `resizeCornerHits`), skip reasons,
+and corner-result counts (`resizeHitTests` and `resizeCornerHits`), solver-frame
+corrections (`resizeFrames`), distance-call count and last stock/extended
+maximum (`distanceCalls` and `distanceLimit`), skip reasons,
 a bounded sample of node names, applied transform count and cached visuals.
 It logs no matrices, hand positions or quaternions. Use Action's **Export logs**
 and the [ADB collection commands](CURVATURE.md#recovery-and-logs) for diagnostics.

@@ -49,6 +49,11 @@ test('settings UI sends fixed boolean commands and status refresh preserves pend
     f.data.grabRuntime = 'off';
     await f.intervals[0]();
     assert.match(f.elements.get('runtime').textContent, /90-second startup guard/);
+    f.data.runtime = 'STOPPED';
+    f.data.restartRequired = 1;
+    await f.intervals[0]();
+    assert.match(f.elements.get('runtime').textContent, /Use one GXR Soft restart to load this update/);
+    f.data.restartRequired = 0;
     f.data.runtime = 'RUNNING';
     f.data.grabRuntime = 'waiting';
     await f.intervals[0]();

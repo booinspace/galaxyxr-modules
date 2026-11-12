@@ -13,6 +13,7 @@ function session() {
     let rotationRestored = false, rotationStops = 0, rotationError = '', home = true;
     let boundaryRestored = !withBoundary, boundaryStops = 0, boundaryDisposals = 0;
     let boundaryPermission = () => false;
+    let distancePermission = () => false;
     const rotationPulses = [];
     const rotation = {
         setEnabled() {}, setGrabEnabled() {},
@@ -45,8 +46,9 @@ function session() {
     const context = {
         parseFeatureCommand, applyFeatureSettings,
         installGrabRotation: () => ({setEnabled() {}, pulse() {}, stop() {}}),
-        installBoundaryAlignment: allowed => {
+        installBoundaryAlignment: (allowed, _onError, distanceAllowed) => {
             boundaryPermission = allowed;
+            distancePermission = distanceAllowed;
             return {stop() { boundaryStops++; }, getDiagnostics: () => ({aligned: 0}), isRestored: () => boundaryRestored,
                 dispose() { assert.ok(boundaryRestored); boundaryDisposals++; }};
         },
@@ -80,6 +82,7 @@ function session() {
         restoreBoundary() { boundaryRestored = true; },
         boundaryStops: () => boundaryStops, boundaryDisposals: () => boundaryDisposals,
         boundaryAllowed: id => boundaryPermission(id),
+        distanceAllowed: id => distancePermission(id),
     };
 }
 
@@ -103,13 +106,20 @@ await running.context.rpc.exports.init();
 assert.equal(running.attached(), 1);
 running.context.pollAgent();
 assert.equal(running.pulses(), 1);
-if (withBoundary) assert.equal(running.boundaryAllowed(42), true, 'rotation binding does not require a Curve menu');
+if (withBoundary) {
+    assert.equal(running.boundaryAllowed(42), true, 'rotation binding does not require a Curve menu');
+    running.context.rpc.exports.onFridaStdin('features 1 1 0 0');
+    assert.equal(running.boundaryAllowed(42), false);
+    assert.equal(running.distanceAllowed(42), true, 'distance remains available with rotation off');
+    running.context.rpc.exports.onFridaStdin('features 1 1 1 0');
+}
 if (withRotation) {
     assert.deepEqual(running.rotationPulses, [true]);
     running.leaveHome();
     running.context.pollAgent();
     assert.equal(running.rotationPulses.at(-1), false);
     if (withBoundary) assert.equal(running.boundaryAllowed(42), false, 'Home Space exit revokes boundary eligibility');
+    if (withBoundary) assert.equal(running.distanceAllowed(42), false, 'Home Space exit revokes distance changes');
 }
 running.context.rpc.exports.onFridaStdin('stop');
 assert.equal(running.stopRequests(), 1);

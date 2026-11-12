@@ -6,7 +6,8 @@ case "${1:-action}" in
 action|start)
   if [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] &&
       [ ! -f /dev/ksu-restart-stage/busy ] &&
-      [ ! -d "$STATE" ] && [ ! -d /dev/gxr-window-curvature-launch ]; then
+      [ ! -d "$STATE" ] && [ ! -d /dev/gxr-window-curvature-launch ] &&
+      ! sh "$MODDIR/restart.sh" needs-restart; then
     nohup sh "$MODDIR/control.sh" run >> "$MODDIR/service.log" 2>&1 </dev/null &
     count=0
     while [ "$count" -lt 30 ]; do

@@ -18,10 +18,16 @@ move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
 settings for curvature, borderless windows, rotation and rotation while
 grabbing. Grab rotation is off by default; the sliders remain available.
 The movement outline and resize corners follow the rotated window. The user
-confirmed hand rotation, boundary alignment and rotated resizing on AZJ2 with
-**0.1.23**. Version **0.1.24** removes test labels from the package metadata;
-its runtime is unchanged. See
+confirmed hand rotation, boundary alignment and selectable resize corners on
+AZJ2 with **0.1.23**. Version **0.1.24** keeps that runtime. A follow-up found
+that tilted resize motion can run in the wrong direction. See
 [feature settings and wrist grabs](docs/CURVATURE.md#feature-settings-and-wrist-grabs).
+
+The **0.1.25 candidate** corrects the resize solver's projection frame, widens
+the stock movement-distance limit tenfold and permits updates after verified
+clean shutdown. These changes pass host checks and need headset validation.
+Updating from 0.1.24 or earlier can still require one final full reboot because
+the old package's shutdown guard runs before replacement.
 
 The combined build includes [boundary alignment](docs/BOUNDARY-ALIGNMENT.md)
 by default. It uses the window's actual transform and keeps stock move events

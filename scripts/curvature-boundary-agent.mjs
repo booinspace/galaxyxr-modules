@@ -32,9 +32,25 @@ export function resizeHitInParent(window, baseline, point) {
         + aligned[12 + i] - baseline[12 + i]);
 }
 
+export function resizeLocalFromScene(window, parentLocalFromScene) {
+    const scale = uniformScaleSquared(window);
+    if (scale === null) throw new Error('Invalid resize frame');
+    const inverse = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    for (let column = 0; column < 3; column++) for (let row = 0; row < 3; row++) {
+        inverse[column * 4 + row] = window[row * 4 + column] / scale;
+    }
+    for (let row = 0; row < 3; row++) {
+        inverse[12 + row] = -[0, 1, 2].reduce((sum, k) => sum + inverse[k * 4 + row] * window[12 + k], 0);
+    }
+    // Validate the source as well as the derived inverse before native memory is changed.
+    boundaryTransform(window, parentLocalFromScene);
+    return boundaryTransform(inverse, parentLocalFromScene);
+}
+
 /** Experimental boundary alignment; leaves stock drag events and the app node untouched. */
-export function installBoundaryAlignment(allowed, onError) {
+export function installBoundaryAlignment(allowed, onError, distanceAllowed = allowed) {
     const renderer = Process.getModuleByName('libsysui_jni_soong_vulkan.so');
+    const backend = Process.getModuleByName('libspaceflinger_jni_vulkan.so');
     const impress = Process.getModuleByName('libImpress-jni-vulkan.so');
     function address(module, symbol, offset) {
         const value = module.getExportByName(symbol);
@@ -58,10 +74,12 @@ export function installBoundaryAlignment(allowed, onError) {
         0x12ee4bc, ['float', 'float', 'float'], ['pointer', 'pointer']);
     const release = new NativeFunction(Module.getGlobalExportByName('_ZdlPv'), 'void', ['pointer']);
     const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-    const records = new Map(), depths = new Map(), hooks = [];
+    const records = new Map(), depths = new Map(), distanceCalls = new Map(), inputCopies = new Set(), hooks = [];
     let stopping = false, applied = 0;
     const diagnostics = {renderer: renderer.name, highlightUpdates: 0, placeholderUpdates: 0, resizes: 0,
         resizeHitTests: 0, resizeCornerHits: 0,
+        resizeFrames: 0, resizeSolverCalls: 0, moveSolverCalls: 0,
+        distanceCalls: 0, distanceLimit: null, distanceParents: [],
         rejected: {}, last: 'waiting-for-callback', parents: [], path: []};
     function skip(reason) {
         diagnostics.last = reason;
@@ -187,6 +205,11 @@ export function installBoundaryAlignment(allowed, onError) {
     const renderState = address(renderer,
         '_ZN2ix6moohan5sysui16ReformController21GetCurrentRenderStateERKNSt3__18optionalIN3imp13GenericRayHitIfEEEE',
         0x4d13470);
+    const resizeSolver = address(backend,
+        '_ZN2ix6moohan5sysui13PanelResizing19ComputeNewPanelSizeERKN3imp10GenericRayIfEES7_NS3_10NodeHandleERKN8filament4math7details5TVec2IfEERKNS2_11ConstraintsENSt3__18optionalINSB_6TMat44IfEEEE',
+        0x4f2efb0);
+    const moveSymbol = '_ZN2ix6moohan5sysui19FreeformPositioning23ComputeUpdatedMoveStateERKN3imp10GenericRayIfEES7_RKNS2_9MoveStateE';
+    const moveSolvers = [address(backend, moveSymbol, 0x4f2a4c0), address(renderer, moveSymbol, 0x4d096e8)];
     try {
         for (const [index, [update, resize, active, cleanup]] of targets.entries()) {
             for (const target of [update, resize]) hooks.push(Interceptor.attach(target, {
@@ -231,6 +254,7 @@ export function installBoundaryAlignment(allowed, onError) {
                     Memory.copy(copy, hit, 0x61);
                     world.forEach((v, i) => copy.add(0x14 + i * 4).writeFloat(v));
                     this.hitCopy = copy;
+                    inputCopies.add(copy);
                     args[1] = copy;
                     diagnostics.resizeHitTests++;
                 });
@@ -239,6 +263,74 @@ export function installBoundaryAlignment(allowed, onError) {
                 if (this.hitCopy !== undefined && result.toInt32() >= 2 && result.toInt32() <= 5) {
                     diagnostics.resizeCornerHits++;
                 }
+                if (this.hitCopy !== undefined) inputCopies.delete(this.hitCopy);
+            },
+        }));
+        hooks.push(Interceptor.attach(resizeSolver, {onEnter(args) {
+            guarded(() => {
+                diagnostics.resizeSolverCalls++;
+                if (stopping) return;
+                if (!this.returnAddress.equals(backend.base.add(0x4d25c58))) { skip('resize-caller'); return; }
+                if (args[7].isNull() || args[7].add(0x40).readU8() === 0) { skip('resize-frame-unavailable'); return; }
+                const owner = Memory.alloc(16);
+                owner.writePointer(args[3]); owner.add(8).writePointer(args[4]);
+                const record = [...records.values()].find(r => r.baseline !== null &&
+                    allowed(r.task) && valid(r.node) && r.path.every(node => valid(node)) &&
+                    same([owner.readU64(), args[4]], r.path[0]));
+                if (record === undefined) return;
+                const frame = resizeLocalFromScene(record.window,
+                    Array.from({length: 16}, (_, i) => args[7].add(i * 4).readFloat()));
+                const copy = Memory.alloc(0x50);
+                Memory.copy(copy, args[7], 0x41);
+                frame.forEach((v, i) => copy.add(i * 4).writeFloat(v));
+                this.frameCopy = copy;
+                inputCopies.add(copy);
+                args[7] = copy;
+                diagnostics.resizeFrames++;
+            });
+        }, onLeave() {
+            if (this.frameCopy !== undefined) inputCopies.delete(this.frameCopy);
+        }}));
+        for (const target of moveSolvers) hooks.push(Interceptor.attach(target, {
+            onEnter(args) {
+                guarded(() => {
+                    diagnostics.moveSolverCalls++;
+                    if (stopping) return;
+                    if (!this.returnAddress.equals(backend.base.add(0x4d25a08))) { skip('distance-caller'); return; }
+                    const component = args[0], node = handle(getNode(component));
+                    if (!valid(node)) return;
+                    const label = name(node), match = /^space-transform-task-(\d+)$/.exec(label);
+                    if (diagnostics.distanceParents.length < 8 && !diagnostics.distanceParents.includes(label)) diagnostics.distanceParents.push(label);
+                    if (match === null) { skip('distance-node-name'); return; }
+                    if (!distanceAllowed(Number(match[1]))) { skip('distance-task-not-ready'); return; }
+                    const key = component.toString();
+                    let record = distanceCalls.get(key);
+                    if (record === undefined) {
+                        const minimum = component.add(0x3c).readFloat(), original = component.add(0x40).readFloat();
+                        if (![minimum, original].every(Number.isFinite) || minimum < 0 ||
+                            original <= minimum || original > 100 || distanceCalls.size >= 64) { skip('distance-range'); return; }
+                        record = {component, node, original, applied: Math.fround(original * 10), depth: 0};
+                        distanceCalls.set(key, record);
+                    }
+                    this.distanceRecord = record;
+                    record.depth++;
+                    // Widen only this move computation; Setup and future gestures retain stock options.
+                    component.add(0x40).writeFloat(record.applied);
+                    diagnostics.distanceCalls++;
+                    diagnostics.distanceLimit = {task: Number(match[1]), stock: record.original, maximum: record.applied};
+                });
+            },
+            onLeave() {
+                if (this.distanceRecord === undefined) return;
+                guarded(() => {
+                    const record = this.distanceRecord;
+                    if (--record.depth !== 0) return;
+                    if (valid(record.node) && same(getNode(record.component), record.node) &&
+                        record.component.add(0x40).readFloat() === record.applied) {
+                        record.component.add(0x40).writeFloat(record.original);
+                    }
+                    distanceCalls.delete(record.component.toString());
+                });
             },
         }));
     } catch (error) { for (const hook of hooks) hook.detach(); throw error; }
@@ -246,9 +338,12 @@ export function installBoundaryAlignment(allowed, onError) {
         stop() { stopping = true; },
         getDiagnostics() {
             return {...diagnostics, rejected: {...diagnostics.rejected}, parents: diagnostics.parents.slice(),
-                path: diagnostics.path.slice(), aligned: applied, cached: records.size};
+                path: diagnostics.path.slice(), distanceParents: diagnostics.distanceParents.slice(),
+                distanceLimit: diagnostics.distanceLimit === null ? null : {...diagnostics.distanceLimit},
+                aligned: applied, cached: records.size, inFlightInputs: inputCopies.size};
         },
-        isRestored() { return stopping && depths.size === 0 && [...records.values()].every(r => r.baseline === null); },
+        isRestored() { return stopping && depths.size === 0 && distanceCalls.size === 0 && inputCopies.size === 0 &&
+            [...records.values()].every(r => r.baseline === null); },
         dispose() {
             if (!this.isRestored()) throw new Error('Boundary cleanup still pending');
             for (const hook of hooks) hook.detach();

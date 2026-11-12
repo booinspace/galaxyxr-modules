@@ -114,9 +114,9 @@ public final class RotationController {
         windows.add(new Window(info.taskId, field(decor, "taskSubspaceRepository"), root));
     }
 
-    /** Boundary eligibility follows live rotation bindings, even without a Curve menu. */
+    /** Live 2D bindings scope boundary alignment and distance limits to ordinary app windows. */
     public synchronized int[] getBoundTaskIds() throws Exception {
-        if (stopping || !enabled || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000) return new int[0];
+        if (stopping || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000) return new int[0];
         int[] ids = new int[windows.size()];
         int count = 0;
         for (Window window : windows) {

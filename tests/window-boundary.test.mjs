@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {boundaryTransform, resizeHitInParent, installBoundaryAlignment} from '../scripts/curvature-boundary-agent.mjs';
+import {boundaryTransform, resizeHitInParent, resizeLocalFromScene, installBoundaryAlignment} from '../scripts/curvature-boundary-agent.mjs';
 
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const turn = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, .2, .3, .4, 1];
@@ -49,6 +49,35 @@ test('resize classification removes all three rotation axes, scale and translati
     }
 });
 
+test('outward and inward resize motion use the tilted plane in every corner', () => {
+    const parent = [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 1, -2, -4, 1];
+    const parentInverse = [.5, 0, 0, 0, 0, .5, 0, 0, 0, 0, .5, 0, -.5, 1, 2, 1];
+    const halfTurn = [-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    function intersection(frame, target) {
+        const origin = transformPoint(frame, [0, 0, 0]);
+        const direction = [0, 1, 2].map(i => target.reduce((sum, v, k) => sum + frame[k * 4 + i] * v, 0));
+        assert.ok(Math.abs(direction[2]) > 1e-6);
+        const time = -origin[2] / direction[2];
+        return origin.map((v, i) => v + time * direction[i]);
+    }
+    for (const window of [identity, turn, halfTurn, pitch, yaw, boundaryTransform(turn, boundaryTransform(pitch, yaw))]) {
+        const sceneFromWindow = boundaryTransform(parent, window);
+        const frame = resizeLocalFromScene(window, parentInverse);
+        for (const corner of corners) for (const factor of [.8, 1.2]) {
+            const start = [corner[0] * 2, corner[1] * 3, 0];
+            const end = start.map(v => v * factor);
+            const first = intersection(frame, transformPoint(sceneFromWindow, start));
+            const last = intersection(frame, transformPoint(sceneFromWindow, end));
+            // AZJ2's solver adds twice the signed local displacement to the starting dimensions.
+            const size = [2, 3].map((v, i) => v + 2 * (last[i] - first[i]) * Math.sign(first[i]));
+            near(size, [2 * factor, 3 * factor]);
+        }
+    }
+    assert.throws(() => resizeLocalFromScene(identity.map(() => NaN), identity), /Invalid/);
+    const skew = identity.slice(); skew[4] = .2;
+    assert.throws(() => resizeLocalFromScene(skew, identity), /Invalid/);
+});
+
 function fixture({wrongPin = false, oversizedChildren = false} = {}) {
     const memory = Buffer.alloc(1 << 20), scene = new Map(), callbacks = new Map(), errors = [], frees = [];
     let next = 1024, writes = 0;
@@ -89,6 +118,8 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
     const controller = alloc(0xa0);
     controller.add(0x20).writeU32(3);
     controller.add(0x98).writePointer(ptr(301));
+    const freeform = alloc(0xe0);
+    freeform.add(0x3c).writeFloat(.75); freeform.add(0x40).writeFloat(5);
     const at = p => scene.get(p.readU32());
     const pointAt = p => [0, 1, 2].map(i => p.add(i * 4).readFloat());
     const matrixAt = p => Array.from({length: 16}, (_, i) => at(p).data.add(i * 4).readFloat());
@@ -99,7 +130,7 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
     };
     const symbols = new Map();
     const implementations = {
-        '_ZNK3imp9Component7GetNodeEv': p => parts(p.equals(controller) ? 1 : p.address === 301 ? 3 : 4),
+        '_ZNK3imp9Component7GetNodeEv': p => parts(p.equals(controller) || p.equals(freeform) ? 1 : p.address === 301 ? 3 : 4),
         '_ZNK3imp10NodeHandle7IsValidEv': p => Boolean(at(p)?.valid),
         '_ZNK3imp4Node9GetParentEv': p => [BigInt(at(p).parent) | (0xfff0n << 32n), ptr(at(p).parent * 16)],
         '_ZNK3imp4Node7GetNameEv': p => [at(p).text, at(p).name.length],
@@ -125,6 +156,9 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
     Object.keys(implementations).slice(0, 9).forEach((s, i) => symbols.set(s, offsets[i]));
     const renderStateSymbol = '_ZN2ix6moohan5sysui16ReformController21GetCurrentRenderStateERKNSt3__18optionalIN3imp13GenericRayHitIfEEEE';
     symbols.set(renderStateSymbol, 0x4d13470);
+    const resizeSolverSymbol = '_ZN2ix6moohan5sysui13PanelResizing19ComputeNewPanelSizeERKN3imp10GenericRayIfEES7_NS3_10NodeHandleERKN8filament4math7details5TVec2IfEERKNS2_11ConstraintsENSt3__18optionalINSB_6TMat44IfEEEE';
+    const moveSolverSymbol = '_ZN2ix6moohan5sysui19FreeformPositioning23ComputeUpdatedMoveStateERKN3imp10GenericRayIfEES7_RKNS2_9MoveStateE';
+    symbols.set(resizeSolverSymbol, 0x4f2efb0);
     for (const [type, values] of [['15HighlightVisual', [0x4d0ba98, 0x4d0c194, 0x4c97c60, 0x4c97d30]],
         ['23ResizePlaceholderVisual', [0x4d1622c, 0x4d16074, 0x4c99828, 0x4c998f8]]]) {
         const names = [`_ZN2ix6moohan5sysui${type}6UpdateERKN3imp9FrameTimeE`,
@@ -134,10 +168,16 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
         names.forEach((s, i) => symbols.set(s, values[i]));
     }
     globalThis.Memory = {alloc, copy: (a, b, size) => memory.copy(memory, a.address, b.address, b.address + size)};
-    const exported = (s, base) => { const p = ptr(base + symbols.get(s) + (wrongPin ? 4 : 0)); p.symbol = s; return p; };
+    const exported = (s, base) => {
+        const offset = s === moveSolverSymbol ? (base === 0x30000000 ? 0x4f2a4c0 : 0x4d096e8) : symbols.get(s);
+        assert.notEqual(offset, undefined, s);
+        const p = ptr(base + offset + (wrongPin ? 4 : 0));
+        p.symbol = s === moveSolverSymbol ? s + ':' + base : s;
+        return p;
+    };
     globalThis.Process = {getModuleByName: n => {
-        assert.ok(['libImpress-jni-vulkan.so', 'libsysui_jni_soong_vulkan.so'].includes(n), 'wrong renderer target: ' + n);
-        const base = n.startsWith('libImpress') ? 0x20000000 : 0x10000000;
+        assert.ok(['libImpress-jni-vulkan.so', 'libsysui_jni_soong_vulkan.so', 'libspaceflinger_jni_vulkan.so'].includes(n), 'wrong renderer target: ' + n);
+        const base = n.startsWith('libImpress') ? 0x20000000 : n.startsWith('libspaceflinger') ? 0x30000000 : 0x10000000;
         return {name: n, base: ptr(base), getExportByName: s => exported(s, base)};
     }};
     globalThis.Module = {getGlobalExportByName: s => { const p = ptr(1); p.symbol = s; return p; }};
@@ -147,6 +187,7 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
         return {detach: () => callbacks.delete(p.symbol)};
     }};
     const allowed = new Set([42]);
+    const distanceAllowed = new Set([42]);
     function invoke(fragment, component = 301, original = () => {}) {
         const symbol = [...callbacks.keys()].find(s => s.includes(fragment));
         assert.ok(symbol, fragment);
@@ -182,10 +223,31 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
         callback.onLeave.call(context, ptr(state));
         return {state, hit: args[1]};
     }
+    function resizeFrame(frame, {caller = true, present = true, owner = 1, during = () => {}} = {}) {
+        const data = alloc(0x50);
+        frame.forEach((v, i) => data.add(i * 4).writeFloat(v));
+        data.add(0x40).writeU8(present ? 1 : 0);
+        const args = [ptr(0), ptr(0), ptr(0), ptr(owner), ptr(owner * 16), ptr(0), ptr(0), data];
+        const context = {returnAddress: ptr(caller ? 0x30000000 + 0x4d25c58 : 0)};
+        const callback = callbacks.get(resizeSolverSymbol);
+        callback.onEnter.call(context, args);
+        const result = {original: Array.from({length: 16}, (_, i) => data.add(i * 4).readFloat()),
+            frame: Array.from({length: 16}, (_, i) => args[7].add(i * 4).readFloat()), copied: !args[7].equals(data)};
+        during(); callback.onLeave.call(context);
+        return result;
+    }
+    function beginMove({caller = true, ui = false} = {}) {
+        const callback = callbacks.get(moveSolverSymbol + ':' + (ui ? 0x10000000 : 0x30000000));
+        const context = {returnAddress: ptr(caller ? 0x30000000 + 0x4d25a08 : 0)};
+        callback.onEnter.call(context, [freeform]);
+        return () => callback.onLeave.call(context);
+    }
     const read = id => Array.from({length: 16}, (_, i) => scene.get(id).data.add(i * 4).readFloat());
-    return {scene, allowed, errors, frees, callbacks, invoke, read, node, nodeHandle, ptr, controller, hit, classify, renderState,
+    return {scene, allowed, distanceAllowed, errors, frees, callbacks, invoke, read, node, nodeHandle, ptr, controller, hit,
+        classify, renderState, resizeFrame, freeform, beginMove,
         bytes: p => Buffer.from(memory.subarray(p.address, p.address + 0x68)),
-        start: () => installBoundaryAlignment(id => allowed.has(id), e => errors.push(e)), get writes() { return writes; }};
+        start: () => installBoundaryAlignment(id => allowed.has(id), e => errors.push(e), id => distanceAllowed.has(id)),
+        get writes() { return writes; }};
 }
 
 test('native visuals align once per frame, preserve stock resize, and wait for cleanup', () => {
@@ -251,6 +313,73 @@ test('stock corner selection sees a corrected copy, including a transformed owne
     assert.notEqual(f.classify(point), 2, 'regression: rotated top-left fails the original flat-space test');
     assert.equal(f.renderState(point).state, 2);
     boundary.stop(); f.invoke('15HighlightVisual6Update'); boundary.dispose();
+});
+
+test('resize solver receives an owned corrected frame only for the pinned app path', () => {
+    const f = fixture(), boundary = f.start();
+    f.invoke('15HighlightVisual6Update');
+    const result = f.resizeFrame(identity);
+    assert.ok(result.copied);
+    near(result.original, identity);
+    near(result.frame, resizeLocalFromScene(turn, identity));
+    for (const options of [{caller: false}, {present: false}, {owner: 99}]) {
+        assert.equal(f.resizeFrame(identity, options).copied, false);
+    }
+    f.allowed.clear(); assert.equal(f.resizeFrame(identity).copied, false);
+    f.allowed.add(42);
+    assert.equal(boundary.getDiagnostics().resizeFrames, 1);
+    boundary.stop(); assert.equal(f.resizeFrame(identity).copied, false);
+    f.invoke('15HighlightVisual6Update'); boundary.dispose();
+    assert.deepEqual(f.errors, []);
+});
+
+test('10x movement limit is temporary, does not compound, and survives rotation being off', () => {
+    const f = fixture(), boundary = f.start();
+    f.allowed.clear(); // Distance follows live app bindings independently of rotation controls.
+    for (const ui of [false, true, false]) {
+        const finish = f.beginMove({ui});
+        assert.equal(f.freeform.add(0x3c).readFloat(), .75);
+        assert.equal(f.freeform.add(0x40).readFloat(), 50);
+        finish(); assert.equal(f.freeform.add(0x40).readFloat(), 5);
+    }
+    const first = f.beginMove(), second = f.beginMove({ui: true});
+    assert.equal(f.freeform.add(0x40).readFloat(), 50);
+    first(); assert.equal(f.freeform.add(0x40).readFloat(), 50);
+    boundary.stop(); assert.equal(boundary.isRestored(), false);
+    second(); assert.equal(f.freeform.add(0x40).readFloat(), 5);
+    assert.equal(boundary.isRestored(), true);
+    const unmodified = f.beginMove(); assert.equal(f.freeform.add(0x40).readFloat(), 5); unmodified();
+    assert.deepEqual(boundary.getDiagnostics().distanceLimit, {task: 42, stock: 5, maximum: 50});
+    boundary.dispose(); assert.deepEqual(f.errors, []);
+});
+
+test('shutdown waits until the native solver releases its owned frame copy', () => {
+    const f = fixture(), boundary = f.start();
+    f.invoke('15HighlightVisual6Update');
+    f.resizeFrame(identity, {during() {
+        boundary.stop(); f.invoke('15HighlightVisual6Update');
+        assert.equal(boundary.isRestored(), false);
+        assert.equal(boundary.getDiagnostics().inFlightInputs, 1);
+    }});
+    assert.equal(boundary.isRestored(), true);
+    boundary.dispose(); assert.deepEqual(f.errors, []);
+});
+
+test('distance guards leave other callers, apps and invalid ranges alone', () => {
+    const f = fixture(), boundary = f.start();
+    const wrong = f.beginMove({caller: false}); assert.equal(f.freeform.add(0x40).readFloat(), 5); wrong();
+    f.distanceAllowed.clear();
+    const excluded = f.beginMove(); assert.equal(f.freeform.add(0x40).readFloat(), 5); excluded();
+    f.distanceAllowed.add(42);
+    for (const maximum of [0, .5, NaN, Infinity, 101]) {
+        f.freeform.add(0x40).writeFloat(maximum);
+        const finish = f.beginMove(); assert.ok(Object.is(f.freeform.add(0x40).readFloat(), maximum)); finish();
+    }
+    f.freeform.add(0x40).writeFloat(5);
+    const reconfigured = f.beginMove();
+    f.freeform.add(0x40).writeFloat(7); // A genuine stock update owns the new value.
+    reconfigured(); assert.equal(f.freeform.add(0x40).readFloat(), 7);
+    boundary.stop(); boundary.dispose(); assert.deepEqual(f.errors, []);
 });
 
 test('flat, unowned, disabled and stale visuals keep the original hit', () => {

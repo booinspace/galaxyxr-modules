@@ -12,6 +12,7 @@ with tempfile.TemporaryDirectory(prefix="gxr-features-") as temporary:
     state = work / "runtime"
     (work / "features.sh").write_text((ROOT / "scripts/curvature-features.sh").read_text().replace(
         "/dev/gxr-window-curvature", str(state)))
+    (work / "restart.sh").write_text('#!/bin/sh\n[ "$1" = needs-restart ] && [ -f "${0%/*}/restart-needed" ]\n')
     tools = work / "tools"
     tools.mkdir()
     (tools / "id").write_text("#!/bin/sh\nprintf '0\\n'\n")
@@ -25,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix="gxr-features-") as temporary:
         return result.stdout
 
     assert json.loads(run("json")) == dict(curvature=1, borderless=1, rotation=1, grab=0,
-                                          runtime="STOPPED", grabRuntime="off", captionReady=0)
+                                          runtime="STOPPED", grabRuntime="off", captionReady=0, restartRequired=0)
     assert json.loads(run("set", "0", "1", "1", "1"))["grab"] == 1
     assert run("wire") == "features 0 1 1 1\n"
     previous = (work / "features.conf").read_bytes()
@@ -56,6 +57,12 @@ with tempfile.TemporaryDirectory(prefix="gxr-features-") as temporary:
     assert data["runtime"] == "DISABLED" and data["grabRuntime"] == "off" and data["captionReady"] == 0
     (work / "disable").unlink()
     launch.rmdir()
+    (work / "restart-needed").touch()
+    assert json.loads(run("json"))["restartRequired"] == 1
+    (work / "failure").write_text("unverified cleanup\n")
+    assert json.loads(run("json"))["restartRequired"] == 0
+    (work / "failure").unlink()
+    (work / "restart-needed").unlink()
     for malformed in ("CURVATURE=1\n", "CURVATURE=$(id)\n", previous.decode() + "GRAB=0\n",
                       previous.decode() + "OTHER=1\n"):
         (work / "features.conf").write_text(malformed)

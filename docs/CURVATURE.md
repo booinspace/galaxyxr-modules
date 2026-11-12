@@ -5,9 +5,15 @@ caption pill, hand positional rotation and pitch/yaw/roll sliders to ordinary
 Home Space Android windows. Stock dragging moves the window; turning the
 grabbing hand rotates it in all three axes. The movement outline and resize
 corners follow that orientation. It uses one supervised Frida injector and
-one Java-owned menu. The user confirmed boundary alignment and rotated
-resizing on AZJ2 with 0.1.23. Version 0.1.24 removes the test labels from its
-metadata while keeping the same runtime.
+one Java-owned menu. The user confirmed boundary alignment and working resize
+corner selection on AZJ2 with 0.1.23. A follow-up found reversed resize motion
+under rotation; selectable corners alone did not establish correct resizing.
+
+The 0.1.25 candidate corrects the resize solver's coordinate frame and extends
+the stock maximum movement distance tenfold. The stock 5 m fallback becomes
+50 m; an explicitly configured maximum is multiplied by ten. The near limit,
+movement sensitivity and ordinary app input are unchanged. These additions
+still need a headset test.
 
 Planned GXR Soft restart resume has been verified on the headset. The 90-second
 startup gate is a workaround for a native startup crash whose cause remains
@@ -19,8 +25,9 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 ## Install
 
 1. Confirm KernelSU GXR reports **Working**. Keep separate Borderless and
-   Rotation modules off. If updating an active window runtime, switch it off,
-   fully reboot and regain temporary root first. The combined package handles
+   Rotation modules off. Updating from 0.1.24 or earlier can require one final
+   full reboot and regaining temporary root: that installed version's guard
+   runs before the new files can replace it. The combined package handles
    previous-boot quarantine through its built-in recovery checks.
 2. In **Modules → Install from storage**, choose the combined ZIP. It installs
    disabled. Use an in-place update; if the existing module is pending
@@ -33,10 +40,32 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The current package is `gxr-window-curvature-0.1.24-azj2-disabled.zip`.
+The candidate package is `gxr-window-curvature-0.1.25-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
 Boundary alignment is included in the combined build. The tested 0.1.23
 artifact remains available in the repository as a checkpoint.
+
+## Updating without a full reboot
+
+Starting with 0.1.25, a normal stop reports stock state only after curvature,
+rims, caption visibility, rotation and boundary transforms are restored, all
+native move computations have returned, and the injector has detached.
+KernelSU GXR can then replace the installed package with a higher version
+without a cold boot. It retains a disabled backup and installs the update
+disabled. Enable it afterward. If that SystemUI process previously hosted the
+old runtime, Action reports **WAITING**: use one GXR **Soft restart** to load
+the update, keeping temporary root. The existing 90-second startup guard still
+applies. If the current process has never hosted this module, Action can start
+it directly. Uninstalling first is unnecessary.
+
+A clean stop records the exact full-boot/PID/start-time identity. The restart
+coordinator uses that proof to retire the old process and authorize one
+replacement. Reinjecting into the same SystemUI process is still refused.
+
+Failed cleanup, an unexpected stop or an existing quarantine still blocks
+replacement and requires recovery. Pending removal/update markers and same
+or lower version codes remain rejected. The same-boot update path has host
+coverage; live replacement still needs a headset check.
 
 ## After a cold boot
 
@@ -147,7 +176,8 @@ remain available. Wrist data stays in process memory and is not logged.
 
 Device checks covered pitch, yaw and roll, retained orientation after release
 and aligned app input. The user also confirmed that the movement outline
-follows the rotated window and that resizing works while tilted with 0.1.23.
+follows the rotated window and that tilted resize corners respond with 0.1.23.
+The later direction report is addressed by the 0.1.25 solver-frame correction.
 See [boundary alignment](BOUNDARY-ALIGNMENT.md) for its implementation and
 checks. Extended idle/wake behavior and tracking under difficult conditions
 remain unverified. Host tests establish parsing, quaternion math and cleanup
@@ -222,8 +252,10 @@ rectangular when the content is curved.
 
 Switch the window module off to request cleanup. The supervisor reports its
 state through **Action** and keeps quarantine markers when restoration is
-unverified. Because stock rim restoration requires process recreation, fully
-reboot with DirtyFrag Autorun off before resetting or replacing the runtime.
+unverified. Clean shutdown in 0.1.25 restores the recorded stock rim request;
+it no longer creates a reboot requirement after success. After a failed or
+unverified stop, fully reboot with DirtyFrag Autorun off before resetting or
+replacing the runtime.
 
 Recovery and diagnostic export are bundled. Use the combined module's
 **Action** to see its status and export logs while running. Export does not
@@ -262,7 +294,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.24-azj2-disabled.zip`
+The output is `gxr-window-curvature-0.1.25-azj2-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit

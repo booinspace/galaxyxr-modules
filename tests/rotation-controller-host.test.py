@@ -234,7 +234,7 @@ public final class RotationControllerTest {
         bound.controller.pulse(true);
         check(bound.controller.getBoundTaskIds().length == 1);
         bound.controller.setEnabled(false);
-        check(bound.controller.getBoundTaskIds().length == 0);
+        check(bound.controller.getBoundTaskIds().length == 1); // Distance does not depend on rotation being enabled.
         bound.stop();
         check(bound.controller.getBoundTaskIds().length == 0);
         Fixture grab = new Fixture();

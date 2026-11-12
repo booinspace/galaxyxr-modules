@@ -47,7 +47,7 @@ snapshot=$(mktemp /data/local/tmp/gxr-window-diagnostics.XXXXXX)
     echo "MODULE=$id"
     if [ -d "$path" ]; then
       head -c 4096 "$path/module.prop" || true
-      for marker in disable remove update failure session-open injected-identity; do
+      for marker in disable remove update failure session-open injected-identity clean-stop; do
         if [ -e "$path/$marker" ]; then
           echo "MARKER=$marker"
           head -c 4096 "$path/$marker" || true
