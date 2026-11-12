@@ -1,4 +1,4 @@
-"""Build the disabled AZJ2 wear-aware dimming module using the existing port runtime."""
+"""Build the disabled AZJ2 wear-aware display blanking module."""
 
 import argparse
 import hashlib
@@ -33,9 +33,18 @@ def main():
         subprocess.run([str(args.javac), "--release", "8", "-Xlint:-options",
                         "-classpath", str(args.android_jar), "-d", str(classes),
                         str(runtime), *(str(p) for p in sources),
-                        str(ROOT / "tests/WearDimPolicyTest.java")], check=True)
+                        str(ROOT / "tests/WearDimPolicyTest.java"),
+                        str(ROOT / "tests/WearDisplayApiProbe.java")], check=True)
         subprocess.run([str(args.java), "-cp", str(classes), "WearDimPolicyTest"], check=True)
         (classes / "WearDimPolicyTest.class").unlink()
+        probe = work / "probe.jar"
+        with ZipFile(probe, "w", ZIP_DEFLATED) as archive:
+            for name in ("WearDisplayApiProbe.class", "com/gxr/wear/DisplayPower.class"):
+                archive.write(classes / name, name)
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "wear-display-api-probe.dex").write_bytes(
+            tools["dex"](args, probe, None, work / "probe-dex"))
+        (classes / "WearDisplayApiProbe.class").unlink()
         jar = work / "helper.jar"
         tools["class_archive"](classes, jar)
         payload = {p.name: p.read_bytes() for p in module.iterdir() if p.is_file()}
@@ -56,7 +65,7 @@ def main():
         if "restart-prepare.sh" in payload and not hooks.issubset(payload):
             raise ValueError("Incomplete GXR coordinated-restart hooks")
         args.output.mkdir(parents=True, exist_ok=True)
-        output = args.output / "gxr-wear-dim-azj2-0.1.2-disabled.zip"
+        output = args.output / "gxr-wear-dim-azj2-0.2.0-disabled.zip"
         with ZipFile(output, "w", ZIP_DEFLATED) as archive:
             for name, data in sorted(payload.items()):
                 entry = ZipInfo(name, (2026, 11, 11, 0, 0, 0))

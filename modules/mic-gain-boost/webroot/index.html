@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- GXR delivers root-command callbacks through a javascript: URL. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Mic gain</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="settings.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">Galaxy XR · booinspace</p><h1>Mic gain</h1>
+      <p>Adjust the built-in microphone’s recording gain.</p></header>
+    <p id="status" role="status" aria-live="polite">Loading settings…</p>
+    <form id="settings">
+      <fieldset id="controls" disabled><legend>Recording</legend>
+        <label for="gain">Gain boost <output id="gain-value" for="gain">+15 steps</output></label>
+        <input id="gain" type="range" min="0" max="40" step="1" value="15" aria-describedby="gain-help">
+        <p id="gain-help" class="hint">0 adds no boost. Higher values can clip; test a recording after adjusting.</p>
+        <label class="toggle" for="vd-only"><span><strong>Virtual Desktop only</strong>
+          <small>Off: apply during mic recording in any app. On: require Virtual Desktop’s voice capture.</small></span>
+          <input id="vd-only" type="checkbox" checked></label>
+      </fieldset>
+      <button id="apply" type="submit" disabled>Apply settings</button>
+    </form>
+    <p class="hint">Settings persist across reboots and apply live while the module is running. No Soft restart needed.</p>
+    <p class="hint">Apps sharing the built-in input path share its hardware gain. USB and Bluetooth microphones are not controlled.</p>
+    <div class="actions"><button id="start" disabled>Start mic boost</button><button id="logs" disabled>Export logs</button></div>
+  </main>
+</body>
+</html>

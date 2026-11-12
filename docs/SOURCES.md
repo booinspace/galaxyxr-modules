@@ -63,18 +63,28 @@ BreadDoesStuff, under MIT. Each module retains its `LICENSE.upstream` and
 `THIRD_PARTY.md`. The [port guide](BREAD-AZJ2.md) describes behavior,
 compatibility checks and builds.
 
+The mic Action UI, live settings and global recording scope in 0.2.0 are by
+[booinspace](https://github.com/booinspace). The upstream MIT notices remain
+included. The slider controls codec steps; acoustic dB gain is not calibrated.
+
 ## Root tools
 
 The separate [Galaxy XR root project](https://git.puppy.boo/nathalie/galaxyxr-root)
 credits DirtyFrag, KernelSU GXR and Samsung kernel sources. Root acquisition
 is not bundled into these modules.
 
-## Wear-aware dimming and firmware hold
+## Wear-aware display blanking and firmware hold
 
-[Wear-aware dimming](../modules/wear-dim/) is by
+[Wear-aware display blanking](../modules/wear-dim/) is by
 [booinspace](https://github.com/booinspace), using the existing local port
 supervisor and inspection of stock AZJ2 `EyesMonitor`,
-`ProximitySensorManager`, `CPM.SystemInputInfo` and DisplayManager APIs.
+`ProximitySensorManager`, `CPM.SystemInputInfo` and Android display APIs.
+The 0.2.0 helper uses Android 14's
+[ISurfaceComposer display getters](https://android.googlesource.com/platform/frameworks/native/+/android-14.0.0_r1/libs/gui/aidl/android/gui/ISurfaceComposer.aidl)
+and the stock `SurfaceControl.setDisplayPowerMode` method. The getters were
+verified read-only on AZJ2. [scrcpy](https://github.com/Genymobile/scrcpy) was
+also consulted for Android 14 display API access; its server-library loader
+is not used here.
 It adds no SystemUI injector and includes no proprietary firmware binaries.
 The [firmware hold](FIRMWARE-HOLD.md) uses the device's existing package-manager
 controls for the two verified Samsung OTA agents.

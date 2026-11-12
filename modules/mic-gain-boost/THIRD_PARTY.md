@@ -15,6 +15,10 @@ observed SystemUI baseline and leaves broad toast suppression off by default.
 The low-light port uses AZJ2's separate threshold instead of disabling the
 whole sensor pipeline.
 
+The 0.2.0 mic settings page, live gain changes and optional global recording
+scope are by booinspace. The original callback/mixer approach remains credited
+to BreadDoesStuff under the included MIT license.
+
 API verification used the user's stock AZJ2 framework/SystemUI and mixer XML.
 Those proprietary binaries are not redistributed. Compile-only hidden API
 stubs are included as source but excluded from the helper DEX. The Java/JDK,

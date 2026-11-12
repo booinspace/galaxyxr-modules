@@ -9,7 +9,7 @@ Samsung Galaxy XR SM-I610, Android 14,
 
 | Port | Activation | Behavior |
 | --- | --- | --- |
-| [Mic gain boost](../modules/mic-gain-boost/README.md) | Enable, then Action | Checks the VD package and recording source; verifies writes and journals mixer ownership |
+| [Mic gain boost](../modules/mic-gain-boost/README.md) | Enable, then Action | Live gain slider and VD-only switch; global recording mode; verifies writes and journals mixer ownership |
 | [Passthrough anywhere](../modules/passthrough-anywhere/README.md) | Enable, then Action; double-tap in immersive app | Requires an observed baseline; closes CPM resources; journals restoration; broad toast muting defaults off |
 | [No low-light toast](../modules/no-lowlight-toast/README.md) | Enable, Action, then one coordinated GXR Soft restart | Sets only the low-light threshold; keeps the sensor pipeline and dim-light threshold enabled |
 
@@ -56,6 +56,8 @@ python3 scripts/build-bread-azj2.py \
   --android-jar /home/nathalie/galaxy-xr-azj2/android-sdk/platforms/android-37.0/android.jar
 python3 tests/bread-port-control.test.py
 python3 tests/bread-daemon-lifecycle.test.py  # Linux/WSL
+python3 tests/mic-settings.test.py
+node --test tests/mic-settings-ui.test.mjs
 shellcheck modules/mic-gain-boost/*.sh modules/passthrough-anywhere/*.sh modules/no-lowlight-toast/*.sh
 ```
 
@@ -76,7 +78,9 @@ adb shell 'CLASSPATH=/data/local/tmp/bread-azj2-api-probe.dex /system/bin/app_pr
 
 ## Device tests
 
-The user tested all three ports on the AZJ2 headset and reports them working.
+The user tested all three original ports on AZJ2 and reports them working.
+The 0.2.0 mic settings page, live changes and global scope need a new recording
+test; host checks do not establish acoustic gain or clipping.
 For repeat testing, keep DirtyFrag Autorun off and test one port at a time
 with the window injectors disabled.
 
@@ -109,8 +113,9 @@ built packages. No firmware binaries or root exploit are bundled.
 
 ## Built releases
 
-The current port ZIPs are version **0.1.1**, credited to BreadDoesStuff with the
-AZJ2 port by **booinspace**. Their runtime files match the previous release.
+The published port ZIPs are version **0.1.1**, credited to BreadDoesStuff with
+the AZJ2 port by **booinspace**. Development mic **0.2.0** adds live controls
+and global recording scope; the other two module versions remain unchanged.
 
 | Module | ZIP SHA-256 |
 | --- | --- |

@@ -1,3 +1,4 @@
 Galaxy XR mic gain boost (AZJ2): installs DISABLED. AZJ2 only.
-Read README.md before enabling; device behavior is not yet tested.
-Enable and tap Action to start. No Soft restart is needed.
+Enable and tap Action to start and open mic gain settings. No Soft restart is needed.
+Slider: 0–40 codec steps. VD-only on preserves the existing behavior; off includes other mic apps.
+New live controls/global mode require a device test; high gain can clip.

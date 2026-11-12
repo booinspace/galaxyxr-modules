@@ -1,49 +1,79 @@
 # Mic gain boost for Galaxy XR AZJ2
 
-Experimental KernelSU GXR port of
-[BreadDoesStuff's mic gain module](https://github.com/BreadDoesStuff/galaxy-xr-modules/tree/93dcf733068d0f57d53b21b79f37b1f38f573e6f/modules/gxr-mic-gain-boost).
-Targets SM-I610 on `I610UES3AZJ2`. Installs disabled. The user tested the
-mic boost on the AZJ2 headset and reports it working.
+KernelSU GXR port of
+[BreadDoesStuff's mic gain module](https://github.com/BreadDoesStuff/galaxy-xr-modules/tree/93dcf733068d0f57d53b21b79f37b1f38f573e6f/modules/gxr-mic-gain-boost),
+with an Action settings page by [booinspace](https://github.com/booinspace).
+Targets SM-I610 on `I610UES3AZJ2`; installs disabled.
 
-The daemon listens for recording callbacks. It boosts `TX_DEC0 Volume` by 15
-steps while `virtualdesktop.android` records with `VOICE_PERFORMANCE` (source
-10). This port checks both package name and source; upstream checked source
-alone. Upstream describes the codec steps as 1 dB each. The default path value
-84 appears in AZJ2's mixer XML. Actual gain and clipping have not been
-measured independently.
+Version **0.2.0** adds a **0–40 step gain slider** and a **Virtual Desktop
+only** switch. Changes persist across reboots and are loaded within the
+running helper's next 250 ms settings check, plus mixer command time. No
+Soft restart is needed. Zero removes this module's extra gain.
 
-Install the ZIP with **KernelSU GXR → Modules → Install from storage**, enable
-its checkbox, then tap **Action**. No Soft restart is needed. `RUNNING` means
-the callback was registered, not that audio quality has been validated. Start
-Virtual Desktop's microphone and compare a recording at the same app settings.
-Do not enable passthrough or rotation during this first check.
+## Install and use
 
-After the first start, edit
-`/data/adb/modules/gxr_mic_gain_azj2/config.conf` if needed:
+1. Regain temporary root; confirm KernelSU GXR says **Working**. Keep
+   DirtyFrag Autorun off.
+2. If an older mic module is running, switch it off and wait about 15 seconds
+   for restoration. Install `gxr-mic-gain-boost-azj2-0.2.0-disabled.zip`.
+3. Enable **Galaxy XR mic gain boost (AZJ2)** and tap **Action**. This starts
+   the helper and opens its settings page.
+4. Adjust **Gain boost**, choose the recording scope and tap **Apply settings**.
+   Compare a short recording at identical app settings before increasing gain.
+
+**Virtual Desktop only** is on by default, preserving the previous behavior:
+boost while `virtualdesktop.android` uses `VOICE_PERFORMANCE` (source 10).
+Turn it off for boost during ordinary, unsilenced mic recording in any app.
+The runtime only changes `TX_DEC0 Volume`, the built-in hardware input path.
+It does not control USB/Bluetooth microphone gain. Simultaneous apps sharing
+that path share the hardware gain, even with the VD switch on.
+
+Higher gain can clip. The default is +15 mixer steps. Upstream describes one
+step as 1 dB; acoustic gain has not been measured, so the slider uses steps.
+AZJ2's mixer XML contains a route baseline of 84; writes are capped at 124.
+The helper observes the current baseline instead of assuming 84.
+
+The original VD boost was user-tested on AZJ2. **The new settings page, live
+adjustments and global scope still need a headset recording test.** `RUNNING`
+means the callback is registered, not that recording quality was validated.
+
+## Settings and cleanup
+
+The root-only page writes `config.conf` atomically and accepts bounded numeric
+values. It never evaluates config as shell code. Settings can also be edited
+at `/data/adb/modules/gxr_mic_gain_azj2/config.conf`:
 
 | Key | Default | Behavior |
 | --- | --- | --- |
-| `MODE` | `1` | Boost during eligible VD capture; concurrent recorders sharing that input path also receive the hardware gain |
-| `MODE=2` | — | Boost only when VD is the sole ordinary mic recorder |
-| `GAIN_DB` | `15` | Mixer step increment; accepted range 0–40, final control value capped at 124 |
+| `GAIN_DB` | `15` | Legacy key name for added mixer steps, 0–40 |
+| `MODE` | `1` | Require VD voice capture; apps sharing its path receive the same hardware gain |
+| `MODE=0` | — | Any ordinary mic recording can trigger boost |
+| `MODE=2` | — | Retained legacy mode: require VD to be the sole ordinary mic recorder |
 
-Higher gain can clip. Bluetooth/USB mic routes are not established by this
-port. Stop and restart the module through its checkbox and Action to reload
-configuration. The stock `config.default.conf` stays checksummed; the mutable
-`config.conf` is retained during updates.
+The page preserves mode 2 if VD-only stays on. Configuration is retained
+during updates; `config.default.conf` remains checksummed.
 
-Turning the checkbox off asks the daemon to restore the value it wrote. It
-does not overwrite a different value subsequently set by the audio HAL or
-another actor. Writes are checked by reading the mixer back, and ownership is
-journaled before each write. An unexpected stop disables the module; Action
-exports `/data/local/tmp/gxr_mic_gain_azj2-daemon.log` and any failure file.
+Repeated slider adjustments use the original owned baseline rather than
+stacking gain. If the audio HAL writes a different value, the helper respects
+it and starts a later boost from that value. Mixer writes are read back,
+and ownership is journaled before writing. Turning the module off restores
+only the value this session owns. Wait about 15 seconds before updating or
+uninstalling. If restoration is unverified, leave it disabled and fully reboot
+with DirtyFrag Autorun off before retrying.
 
-Uninstall through KernelSU after restoration. GXR checks
-`GXR_UPDATE_STATE=STOCK`. If restoration cannot be verified, leave it disabled
-and fully reboot with DirtyFrag Autorun off; regain root manually before
-removal. A full reboot resets the hardware path and invalidates the old boot's
-journal. Module files can persist after temporary root ends.
+The page's **Export logs** button copies the current log and any failure to
+`/data/local/tmp/gxr_mic_gain_azj2-*` without starting a stopped runtime.
+Temporary root must be regained after a full boot to reapply the effect.
 
-Source, MIT license and build provenance are included in the ZIP. See
-`THIRD_PARTY.md` and the repository's `docs/BREAD-AZJ2.md` for build steps and
-the test sequence.
+## Build and credits
+
+See [the port guide](../../docs/BREAD-AZJ2.md) for JDK/SDK build requirements.
+The builder includes source, MIT notices, firmware/payload pins and provenance.
+Run `python3 tests/mic-settings.test.py`, `node --test tests/mic-settings-ui.test.mjs`
+and the shared daemon lifecycle test as well as the builder's Java policy
+checks. Host tests cover global/VD eligibility, live gain baseline handling,
+restoration, validation and the UI's bounded root commands.
+
+The original module is by **BreadDoesStuff**, under MIT; see
+`LICENSE.upstream` and `THIRD_PARTY.md`. The AZJ2 port and live Action UI are by
+**booinspace**. No firmware binary is bundled.

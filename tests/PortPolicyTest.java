@@ -12,13 +12,24 @@ public final class PortPolicyTest {
         check(!GainState.wanted(true, true, 2), "Mode 2 concurrent recording");
         check(GainState.wanted(true, false, 2), "Mode 2 exclusive VD capture");
         check(!GainState.wanted(false, false, 1), "Idle");
+        check(GainState.wanted(false, true, 0), "Global mode includes another mic app");
+        check(GainState.wanted(true, false, 0), "Global mode includes VD");
+        check(!GainState.wanted(false, false, 0), "Global mode leaves idle mixer alone");
         GainState gain = new GainState();
         check(gain.target(true, 84, 15) == 99, "Default boost");
         gain.own(84, 99);
         check(gain.target(true, 99, 15) == 99, "Do not stack boost");
+        check(gain.target(true, 99, 5) == 89, "Live slider reduces boost from original baseline");
+        gain.own(99, 89);
+        check(gain.saved == 84 && gain.written == 89, "Slider preserves restoration baseline");
+        check(gain.target(true, 89, 0) == 84, "Zero removes our boost");
+        check(gain.target(false, 89, 5) == 84, "Slider value still restores original mixer");
+        gain.own(89, 99);
         check(gain.target(false, 99, 15) == 84, "Restore our own write");
         check(gain.target(false, 90, 15) == 90, "Respect another writer");
         check(gain.target(true, 120, 15) == 124, "Mixer cap");
+        gain.own(90, 105);
+        check(gain.saved == 90, "HAL change starts a new ownership baseline");
         try { gain.target(true, 125, 15); throw new AssertionError("Invalid mixer accepted"); }
         catch (IllegalArgumentException expected) { }
 

@@ -15,7 +15,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Properties;
 
-/** Event-driven gain for Virtual Desktop's VOICE_PERFORMANCE capture on AZJ2. */
+/** Event-driven gain for the built-in mic path, with live global/VD-only settings. */
 public final class Main {
     private static final String CTL = "TX_DEC0 Volume";
     private static final long[] RECHECK_MS = {0, 150, 500, 1500, 4000};
@@ -23,6 +23,7 @@ public final class Main {
     private static int mode = 1;
     private static int gainDb = 15;
     private static Handler handler;
+    private static IAudioService audio;
     private static PortRuntime runtime;
     private static Method packageName;
     private static volatile boolean want;
@@ -44,16 +45,16 @@ public final class Main {
         if (!"daemon".equals(args[0])) throw new IllegalArgumentException("Unknown mode");
         loadConfig();
         packageName = AudioRecordingConfiguration.class.getMethod("getClientPackageName");
-        runtime.watch(Main::restore, null);
         Looper.prepareMainLooper();
         handler = new Handler(Looper.getMainLooper());
+        runtime.watch(Main::restore, () -> handler.post(Main::reloadConfig));
         IBinder binder = null;
         for (int retry = 0; binder == null && retry < 30 && !runtime.stopping; retry++) {
             binder = ServiceManager.getService("audio");
             if (binder == null) Thread.sleep(500);
         }
         if (binder == null) throw new IllegalStateException("AudioService unavailable");
-        IAudioService audio = IAudioService.Stub.asInterface(binder);
+        audio = IAudioService.Stub.asInterface(binder);
         binder.linkToDeath(() -> runtime.fail(new IllegalStateException("AudioService died")), 0);
         audio.registerRecordingCallback(new IRecordingConfigDispatcher.Stub() {
             @Override public void dispatchRecordingConfigChange(List<AudioRecordingConfiguration> configs) {
@@ -65,13 +66,27 @@ public final class Main {
         Looper.loop();
     }
 
-    private static void loadConfig() throws Exception {
+    private static boolean loadConfig() throws Exception {
         Properties config = new Properties();
         try (FileInputStream input = new FileInputStream(new File(runtime.module, "config.conf"))) { config.load(input); }
-        mode = Integer.parseInt(config.getProperty("MODE", "1").trim());
-        gainDb = Integer.parseInt(config.getProperty("GAIN_DB", "15").trim());
-        GainState.wanted(false, false, mode);
-        gain.target(false, 0, gainDb);
+        int nextMode = Integer.parseInt(config.getProperty("MODE", "1").trim());
+        int nextGain = Integer.parseInt(config.getProperty("GAIN_DB", "15").trim());
+        GainState.wanted(false, false, nextMode);
+        gain.target(false, 0, nextGain);
+        boolean changed = mode != nextMode || gainDb != nextGain;
+        mode = nextMode;
+        gainDb = nextGain;
+        return changed;
+    }
+
+    private static void reloadConfig() {
+        if (runtime.stopping || audio == null) return;
+        try {
+            if (loadConfig()) {
+                PortRuntime.log("SETTINGS mode=" + mode + " gainSteps=" + gainDb);
+                updateChecked(audio.getActiveRecordingConfigurations());
+            }
+        } catch (Exception error) { runtime.fail(error); }
     }
 
     private static void update(List<AudioRecordingConfiguration> configs) {

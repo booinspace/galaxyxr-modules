@@ -1,6 +1,6 @@
 id=gxr_wear_dim_azj2
-name=Galaxy XR wear-aware eye-loss dimming (AZJ2)
-version=0.1.2-azj2-experimental
-versionCode=3
+name=Galaxy XR wear-aware display blanking (AZJ2)
+version=0.2.0-azj2-experimental
+versionCode=4
 author=booinspace
-description=Dims after 60 seconds without eyes instead of using the no-eyes sleep countdown. Keeps stock proximity removal sensing. Enable then Action; no Soft restart needed.
+description=Turns the panel off after 60 seconds without eyes while worn; polls every 16 ms while blanked to restore on eye return. Keeps stock removal sleep. Enable then Action; no Soft restart needed.

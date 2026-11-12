@@ -7,7 +7,7 @@ import unittest
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = ROOT / "releases/gxr-wear-dim-azj2-0.1.2-disabled.zip"
+PACKAGE = ROOT / "releases/gxr-wear-dim-azj2-0.2.0-disabled.zip"
 
 
 class WearDimPackageTest(unittest.TestCase):

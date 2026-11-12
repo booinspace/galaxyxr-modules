@@ -1,6 +1,6 @@
 id=gxr_mic_gain_azj2
 name=Galaxy XR mic gain boost (AZJ2)
-version=0.1.1-azj2-experimental
-versionCode=2
+version=0.2.0-azj2-experimental
+versionCode=3
 author=BreadDoesStuff; AZJ2 port by booinspace
-description=Experimental disabled AZJ2 port. Read README.md for activation, side effects and recovery.
+description=Action opens live mic boost settings: 0–40 mixer steps, global or Virtual Desktop only. Installs disabled; AZJ2 only. High gain can clip.

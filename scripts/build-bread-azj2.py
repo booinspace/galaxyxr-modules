@@ -63,6 +63,8 @@ def main():
         for name in MODULES:
             module = ROOT / "modules" / name
             payload = {path.name: path.read_bytes() for path in module.iterdir() if path.is_file()}
+            for path in sorted((module / "webroot").rglob("*")):
+                if path.is_file(): payload[path.relative_to(module).as_posix()] = path.read_bytes()
             helper_sources = sorted((module / "src").rglob("*.java"))
             stubs_sources = sorted((module / "stubs").rglob("*.java"))
             for source in helper_sources + stubs_sources:
@@ -95,7 +97,9 @@ def main():
             payload["bin/build-info.json"] = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
             payload["SHA256SUMS"] = "".join(f"{sha(data)}  {path}\n" for path, data in sorted(payload.items())
                                             if path != "disable").encode()
-            output = args.output / f"gxr-{name}-azj2-0.1.1-disabled.zip"
+            version = next(line.split("=", 1)[1].split("-", 1)[0]
+                           for line in payload["module.prop"].decode().splitlines() if line.startswith("version="))
+            output = args.output / f"gxr-{name}-azj2-{version}-disabled.zip"
             with ZipFile(output, "w", ZIP_DEFLATED) as archive:
                 for path, data in sorted(payload.items()):
                     entry = ZipInfo(path, (2026, 11, 11, 0, 0, 0))

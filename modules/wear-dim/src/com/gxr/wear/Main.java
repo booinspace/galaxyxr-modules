@@ -6,6 +6,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.IBinder;
+import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -14,21 +15,28 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Properties;
 
-/** Standalone wear/eye observer; owns one temporary brightness override, never a wake lock. */
+/** Standalone wear/eye observer; blanks only the physical panel, never holds a wake lock. */
 public final class Main {
     private static final String KEY = "debug.ix.sysui.eyes_monitor.enabled";
     private static PortRuntime runtime;
     private static Properties state;
     private static Object display, input;
-    private static Method temporaryBrightness, brightness, retrieve;
+    private static Method retrieve;
+    private static DisplayPower panel;
+    private static Handler handler;
     private static Field eyeStatus;
     private static SensorManager sensors;
     private static SensorEventListener listener;
     private static PowerManager power;
     private static volatile boolean mounted;
-    private static int eyes = -1;
-    private static boolean attemptedDim;
+    private static boolean blanked;
     private static final DimPolicy policy = new DimPolicy();
+    private static final Runnable POLL = new Runnable() {
+        public void run() {
+            tick();
+            if (!runtime.stopping) handler.postDelayed(this, blanked ? 16 : 250);
+        }
+    };
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2 || !(args[0].equals("daemon") || args[0].equals("restore"))) {
@@ -41,16 +49,16 @@ public final class Main {
         Object thread = threadType.getMethod("systemMain").invoke(null);
         Context context = (Context) threadType.getMethod("getSystemContext").invoke(thread);
         display = context.getSystemService(Context.DISPLAY_SERVICE);
-        Class<?> displayType = Class.forName("android.hardware.display.DisplayManager");
-        temporaryBrightness = displayType.getMethod("setTemporaryBrightness", int.class, float.class);
-        brightness = displayType.getMethod("getBrightness", int.class);
+        power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        panel = new DisplayPower();
         if (args[0].equals("restore")) {
             restore();
-            PortRuntime.log("PORT_STOCK brightness and eye-monitor property restored");
+            PortRuntime.log("PORT_STOCK display power and eye-monitor property restored");
             return;
         }
+        restoreLegacyBrightness();
+        handler = new Handler(Looper.getMainLooper());
         sensors = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
-        power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         Sensor sensor = sensors.getDefaultSensor(34);
         if (sensor == null) throw new IllegalStateException("Stock off-body sensor unavailable");
         Class<?> inputType = Class.forName("android.graphics.CPM$SystemInputInfo");
@@ -61,16 +69,18 @@ public final class Main {
                 .getMethod("getService", String.class).invoke(null, "cpm");
         if (cpm == null) throw new IllegalStateException("CPM service unavailable");
         cpm.linkToDeath(() -> runtime.fail(new IllegalStateException("CPM service died")), 0);
+        panel.linkToDeath(() -> runtime.fail(new IllegalStateException("Display composer died")));
         listener = new SensorEventListener() {
             public void onSensorChanged(SensorEvent event) {
                 mounted = event.values.length > 0 && event.values[0] > 0;
+                tick();
             }
             public void onAccuracyChanged(Sensor ignored, int accuracy) { }
         };
         if (!sensors.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)) {
             throw new IllegalStateException("Could not observe stock wear sensor");
         }
-        runtime.watch(Main::restore, Main::tick);
+        runtime.watch(Main::restore, null);
         synchronized (Main.class) {
             if (runtime.stopping) throw new IllegalStateException("Runtime stopped during initialization");
             state.setProperty("previousEyeMonitor", PortRuntime.command("/system/bin/getprop", KEY));
@@ -82,7 +92,8 @@ public final class Main {
             }
         }
         runtime.ready();
-        PortRuntime.log("WAITING: wear headset; 60 seconds without eyes dims to 20% of current brightness");
+        handler.post(POLL);
+        PortRuntime.log("WAITING: 60 seconds without eyes blanks the panel; eye-return polling is 16 ms while blanked");
         Looper.loop();
     }
 
@@ -90,43 +101,52 @@ public final class Main {
         if (runtime.stopping) return;
         try {
             boolean interactive = power.isInteractive();
-            if (!mounted || !interactive) eyes = -1;
-            else if ((Boolean) retrieve.invoke(input)) eyes = eyeStatus.getInt(input);
-            // A false retrieval leaves the last observation intact, as in stock EyesMonitor's StateFlow.
-            boolean dim = policy.update(SystemClock.elapsedRealtime(), mounted, interactive, eyes);
-            if (dim && !attemptedDim) {
-                float current = ((Number) brightness.invoke(display, 0)).floatValue();
-                float target = DimPolicy.dimLevel(current);
-                if (target < current) {
-                    state.setProperty("brightnessOwned", "true");
-                    runtime.save(state);
-                    temporaryBrightness.invoke(display, 0, target);
-                    PortRuntime.log("DIMMED " + current + " -> " + target);
-                } else {
-                    PortRuntime.log("DIM_SKIPPED: display already at minimum brightness");
-                }
-                attemptedDim = true;
-            } else if (!dim && attemptedDim) {
-                restoreBrightness();
-                attemptedDim = false;
+            long now = SystemClock.elapsedRealtime();
+            boolean fresh = mounted && interactive && (Boolean) retrieve.invoke(input);
+            int eyes = fresh ? eyeStatus.getInt(input) : 2;
+            boolean blank = policy.update(now, mounted, interactive, eyes, fresh);
+            if (blank && !blanked) {
+                state.setProperty("panelOwned", "true");
+                runtime.save(state);
+                panel.blank(true);
+                blanked = true;
+                PortRuntime.log("DISPLAY_BLANKED");
+            } else if (!blank && blanked) {
+                restorePanel();
             }
         } catch (Exception error) {
             runtime.fail(error);
         }
     }
 
-    private static void restoreBrightness() throws Exception {
+    private static void restoreLegacyBrightness() throws Exception {
         if (!Boolean.parseBoolean(state.getProperty("brightnessOwned"))) return;
         // NaN releases Android's temporary override and returns control to the user's saved setting.
-        temporaryBrightness.invoke(display, 0, Float.NaN);
+        Class.forName("android.hardware.display.DisplayManager")
+                .getMethod("setTemporaryBrightness", int.class, float.class).invoke(display, 0, Float.NaN);
         state.setProperty("brightnessOwned", "false");
         runtime.save(state);
         PortRuntime.log("BRIGHTNESS_RESTORED");
     }
 
+    private static void restorePanel() throws Exception {
+        if (!Boolean.parseBoolean(state.getProperty("panelOwned"))) return;
+        // Do not turn the panel on after stock/manual sleep has made Android noninteractive.
+        if (power.isInteractive()) {
+            panel.blank(false);
+            if (!power.isInteractive()) panel.blank(true);
+        }
+        state.setProperty("panelOwned", "false");
+        runtime.save(state);
+        blanked = false;
+        PortRuntime.log("DISPLAY_RELEASED");
+    }
+
     private static synchronized void restore() throws Exception {
         if (sensors != null && listener != null) sensors.unregisterListener(listener);
-        restoreBrightness();
+        if (handler != null) handler.removeCallbacks(POLL);
+        restorePanel();
+        restoreLegacyBrightness();
         if (Boolean.parseBoolean(state.getProperty("propertyOwned"))) {
             if (PortRuntime.command("/system/bin/getprop", KEY).equals("false")) {
                 String original = state.getProperty("previousEyeMonitor", "");

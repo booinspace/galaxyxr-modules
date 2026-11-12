@@ -1,5 +1,8 @@
-AZJ2 wear-aware dimming: installs DISABLED; standalone process, no SystemUI injection.
+AZJ2 wear-aware display blanking: installs DISABLED; updates the existing eye-dimming module.
 Enable this module, then tap Action. No Soft restart required.
 Remove the headset for 3 seconds, then put it back on to clear any existing sleep countdown.
-After 60 seconds without eyes, dims to 20% of current brightness; eyes returning restores it.
+After 60 seconds without eyes while worn, turns the physical panel off without Android sleep.
+While blanked, polls every 16 ms for eyes; actual wake latency still needs a device test.
+An explicit unknown eye state releases blanking; unchanged CPM snapshots preserve the last state.
+No brightness or saved screen settings are changed.
 Normal proximity removal, manual sleep, low-battery and thermal shutdown remain in place.

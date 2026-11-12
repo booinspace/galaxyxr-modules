@@ -28,8 +28,8 @@ installation while boundary alignment is investigated separately.
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
 | Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
-| Wear-aware dimming | Dims after 60 seconds without detected eyes while worn; keeps proximity removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear and eye APIs | [Wear/dim guide](modules/wear-dim/README.md) |
-| Mic gain boost | Adjusts microphone gain for selected recording modes | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
+| Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
+| Mic gain boost | Action UI with live 0–40 step gain control and global or Virtual Desktop-only recording scope | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
 | No low-light toast | Suppresses the low-light signal while retaining the dim-light pipeline | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Low-light guide](modules/no-lowlight-toast/README.md) |
 
@@ -39,9 +39,11 @@ confirmed curvature, rotation, rim/pill hiding, dragging and app input. The
 90-second startup gate is a workaround; the native startup crash that prompted
 it has not been fully diagnosed. Extended idle/wake stability remains
 unverified. The user has also tested all three BreadDoesStuff ports and
-wear-aware dimming on the AZJ2 headset and reports them working.
+the earlier wear-aware dimming on AZJ2 and reports them working. The new
+0.2.0 panel-blanking behavior and live/global mic controls require device
+validation. The 16 ms eye-poll interval is not a measured display wake latency.
 
-The experimental [wear-aware dimming module](modules/wear-dim/README.md) is a
+The experimental [wear-aware display module](modules/wear-dim/README.md) is a
 standalone process. The [firmware hold guide](docs/FIRMWARE-HOLD.md)
 records the reversible OTA-agent block applied to keep the headset on AZJ2.
 

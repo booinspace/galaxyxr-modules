@@ -86,6 +86,7 @@ export_logs() {
 }
 case "${1:-action}" in
 status) status ;;
+export) status; export_logs ;;
 off)
   : > "$MODDIR/disable"
   stop_runtime || exit 1
@@ -178,5 +179,5 @@ run)
     sleep 1
   done
   ;;
-*) echo 'Usage: control.sh action|status|off|prepare|run'; exit 1 ;;
+*) echo 'Usage: control.sh action|status|export|off|prepare|run'; exit 1 ;;
 esac
