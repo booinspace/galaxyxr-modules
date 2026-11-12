@@ -8,26 +8,28 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download the current ZIPs and checksum file from the
+Download [Window Controls 0.1.24](https://github.com/booinspace/galaxyxr-modules/raw/refs/heads/main/releases/gxr-window-curvature-0.1.24-azj2-disabled.zip)
+and its [checksum](releases/gxr-window-curvature-0.1.24-azj2-disabled.zip.sha256).
+Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
-The combined ZIP contains curvature, borderless windows and rotation.
 
 Window Controls now includes **hand positional rotation**: grab a window to
 move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
 settings for curvature, borderless windows, rotation and rotation while
 grabbing. Grab rotation is off by default; the sliders remain available.
-The user verified all three axes, retained orientation after release and
-aligned app input on **0.1.18**. See
+The movement outline and resize corners follow the rotated window. The user
+confirmed hand rotation, boundary alignment and rotated resizing on AZJ2 with
+**0.1.23**. Version **0.1.24** removes test labels from the package metadata;
+its runtime is unchanged. See
 [feature settings and wrist grabs](docs/CURVATURE.md#feature-settings-and-wrist-grabs).
 
-The local 0.1.19 development build also binds an existing window when its top
-menu opens and adds grab diagnostics. That change still needs a device test;
-it does not fix Samsung's untilted grab outline. Keep the working 0.1.18
-installation while boundary alignment is investigated separately.
+The combined build includes [boundary alignment](docs/BOUNDARY-ALIGNMENT.md)
+by default. It uses the window's actual transform and keeps stock move events
+and resize input intact.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
-| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
+| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, aligned movement/resize boundaries, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, boundary alignment and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
 | Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
 | Mic gain boost | Action UI with live 0–40 step gain control and global or Virtual Desktop-only recording scope | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
@@ -80,7 +82,7 @@ restored window. The rim and resting pill hide; pointing at the top reveals
 the pill and retains dragging. The app's top menu contains Curve/Flatten,
 curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
-The published baseline package is `Combined-0.1.15-booinspace.zip`. The build includes an
+The current package is `gxr-window-curvature-0.1.24-azj2-disabled.zip`. The build includes an
 ART/CMC bridge patch and checks the exact ART library hash before attachment.
 Recovery is built in: after a cold boot, module startup preserves diagnostics
 and acknowledges the previous boot's session automatically. **Action** starts

@@ -3,10 +3,13 @@
 The combined module adds curvature, borderless app windows, a hover-only
 caption pill, hand positional rotation and pitch/yaw/roll sliders to ordinary
 Home Space Android windows. Stock dragging moves the window; turning the
-grabbing hand rotates it in all three axes. It uses one supervised Frida
-injector and one Java-owned menu.
-The released 0.1.15 window runtime resumed automatically after two consecutive GXR Soft
-restarts on the AZJ2 headset, with its enabled state retained. The 90-second
+grabbing hand rotates it in all three axes. The movement outline and resize
+corners follow that orientation. It uses one supervised Frida injector and
+one Java-owned menu. The user confirmed boundary alignment and rotated
+resizing on AZJ2 with 0.1.23. Version 0.1.24 removes the test labels from its
+metadata while keeping the same runtime.
+
+Planned GXR Soft restart resume has been verified on the headset. The 90-second
 startup gate is a workaround for a native startup crash whose cause remains
 undetermined. Extended idle/wake stability remains unverified.
 
@@ -22,21 +25,18 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 2. In **Modules → Install from storage**, choose the combined ZIP. It installs
    disabled. Use an in-place update; if the existing module is pending
    deletion, tap **Undo**, leave it off, then retry installation.
-3. Enable **Galaxy XR Curvature + Borderless + Rotation** and tap its
+3. Enable **Galaxy XR Window Controls** and tap its
    **Action** once to start it. Future GXR Soft restarts use the coordinated
    handoff described below and restart the module automatically.
-4. Wait **45 seconds**, fully close an ordinary app window and launch it again.
+4. Wait for **App window setup: ready** in Action settings, fully close an
+   ordinary app window and launch it again.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The released short filename is `Combined-0.1.15-booinspace.zip`.
+The current package is `gxr-window-curvature-0.1.24-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
-The 0.1.18 ZIP includes the settings UI and hand-grab rotation tested on the
-headset in all three axes, including release and aligned app input. The
-0.1.19 development ZIP additionally binds restored windows through their top
-menu and adds grab diagnostics. Those additions remain untested on the device.
-Neither build aligns Samsung's grab outline with the rotated contents yet;
-keep a working 0.1.18 installation while that change is developed separately.
+Boundary alignment is included in the combined build. The tested 0.1.23
+artifact remains available in the repository as a checkpoint.
 
 ## After a cold boot
 
@@ -86,8 +86,8 @@ one full boot. Exported diagnostics and live process checks confirmed successful
 restart hooks, distinct replacement SystemUI identities, consumed one-use
 handoffs and no current disable/failure markers. After the second restart, the
 user confirmed curve/tilt menus, rim/pill hiding, dragging and app input before
-pressing Action. Release 0.1.15 updates author metadata; its runtime files
-match the tested 0.1.14 build byte for byte.
+pressing Action. Later checks confirmed boundary alignment and rotated resizing
+with the current window runtime.
 
 ## Use
 
@@ -109,7 +109,7 @@ Pitch and yaw can make a panel edge-on or turn it away from you.
 
 ## Feature settings and wrist grabs
 
-The development module's **Action** starts the enabled runtime, exports logs and
+The module's **Action** starts the enabled runtime, exports logs and
 opens a small settings page inside KernelSU GXR. No companion APK is needed.
 The page has switches for curvature, borderless windows, rotation controls and
 rotation while grabbing. **Apply settings** saves those choices across reboots
@@ -119,7 +119,7 @@ borderless restores the last stock rim request and shows the pill. Disabling
 rotation restores its local orientation. Turning only grab rotation off keeps
 the current orientation and the Pitch, Yaw and Roll sliders.
 
-Grab rotation is **off by default** and experimental. It observes AZJ2's stock
+Grab rotation is **off by default**. It observes AZJ2's stock
 hand input events and uses the active hand-grip quaternion during stock move
 events. This follows the full hand orientation, including roll. The tracking
 frame is the hand grip/palm frame; it is not a raw wrist-joint measurement.
@@ -131,7 +131,7 @@ delta. Roll is taken from the full hand quaternion.
 
 New windows bind to their caption when the delayed caption hook runs. A window
 created earlier can receive hand samples without creating a rotation session.
-In 0.1.19, opening its top menu also binds the existing caption, so grab
+Opening its top menu also binds the existing caption, so grab
 rotation can work without recreating that window. The menu can close afterward;
 updates use the caption's view owner. This does not retrofit Borderless's rim
 and pill hooks onto an older window.
@@ -145,15 +145,13 @@ one hand with stock pinch-gesture strength at least 0.8. Two pinching hands, sta
 tracking loss cancel grab rotation until the next grab. The existing sliders
 remain available. Wrist data stays in process memory and is not logged.
 
-The user confirmed hand-grab rotation on AZJ2 with 0.1.18 after fully closing
-and reopening a window after the caption hook attached. Pitch, yaw and roll
-worked; orientation stayed in place after release and app input still lined
-up. The exported log showed accepted hand samples, selected grabs and a new
-rotation session. Samsung's movement outline still follows the stock parent
-orientation, so it can disagree with tilted contents. Boundary alignment,
-extended idle/wake behavior and tracking under difficult conditions remain
-unverified. Host tests establish parsing, quaternion math and cleanup behavior;
-they do not replace headset checks.
+Device checks covered pitch, yaw and roll, retained orientation after release
+and aligned app input. The user also confirmed that the movement outline
+follows the rotated window and that resizing works while tilted with 0.1.23.
+See [boundary alignment](BOUNDARY-ALIGNMENT.md) for its implementation and
+checks. Extended idle/wake behavior and tracking under difficult conditions
+remain unverified. Host tests establish parsing, quaternion math and cleanup
+behavior; they do not replace headset checks.
 The page reports hand tracking as waiting, tracking or unavailable. Waiting
 means no fresh accepted sample; the window runtime can still be running.
 The log records input callback/sample counts, grab counts and rejection reasons every
@@ -182,6 +180,7 @@ The runtime checks SM-I610 and these exact stock SHA-256 values:
 | `/system_ext/lib64/libImpress-jni-vulkan.so` | `ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42` |
 | `/system/framework/framework.jar` | `6ec625a07d94e3e50d82eea14bcec05425de303a62a512e6b82ae57881c46ad7` |
 | `/apex/com.android.art/lib64/libart.so` | `afc9dde61f50e1e2b085c886e2bad7df98c433b28e0f01041221e1d138c321c5` |
+| `/system_ext/lib64/libsysui_jni_soong_vulkan.so` | `f6e34cf42f704c5d3ced9cca18dd392abf4925cde9e30c3b752a34be4102a809` |
 
 The module refuses mismatches. A firmware update requires inspection and a
 new build. No stock APK or native library is replaced.
@@ -216,8 +215,8 @@ while the headset sleeps.
 
 The intended scope is ordinary 2D Home Space windows. Other firmware,
 immersive/system window behavior, extended stability and every app's input
-alignment have not been established. The flat resize outline remains a
-renderer limitation.
+alignment have not been established. The outline follows rotation but remains
+rectangular when the content is curved.
 
 ## Recovery and logs
 
@@ -240,8 +239,9 @@ adb pull /data/local/tmp/gxr-window-diagnostics.txt
 ```
 
 An absent failure file is normal. Check export timestamps before interpreting
-saved copies. Logs can contain app/task identifiers. Avoid another Soft
-restart while the window runtime is attached; stop it and fully reboot instead.
+saved copies. Logs can contain app/task identifiers. Use KernelSU GXR's planned
+Soft restart for normal restarts. After an unexpected failure, switch the
+module off and fully reboot before resetting its quarantine.
 
 ## Build
 
@@ -262,7 +262,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The development output is `gxr-window-curvature-0.1.19-azj2-experimental-disabled.zip`
+The output is `gxr-window-curvature-0.1.24-azj2-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
@@ -287,5 +287,5 @@ Age-gate tests use a controlled uptime input to verify the wait, preserve the
 unused authorization, and reject changed processes, generations and invalid
 clock data before attachment.
 The disabled-package verifier checks checksums, executable modes, ARM64/Dex
-layout and all five firmware pins. The CMC patch is checked before applying
+layout and all six firmware pins. The CMC patch is checked before applying
 it and its exact hash is recorded in `build.json`.

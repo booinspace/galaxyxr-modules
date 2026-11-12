@@ -221,6 +221,22 @@ public final class RotationControllerTest {
         catch (IllegalStateException expected) { check(CPM.Node.copy.closes == 1); }
         finally { CPM.Node.wrongCopy = false; }
         wrong.stop();
+        Fixture bound = new Fixture();
+        View caption = bound.menu.parentDecor.relayoutResult.mRootView;
+        check(bound.controller.getBoundTaskIds().length == 0);
+        bound.controller.bindWindow(bound.menu.parentDecor, caption);
+        check(bound.controller.getBoundTaskIds().length == 1 && bound.controller.getBoundTaskIds()[0] == 42);
+        caption.attached = false;
+        check(bound.controller.getBoundTaskIds().length == 0);
+        caption.attached = true;
+        bound.controller.pulse(false);
+        check(bound.controller.getBoundTaskIds().length == 0);
+        bound.controller.pulse(true);
+        check(bound.controller.getBoundTaskIds().length == 1);
+        bound.controller.setEnabled(false);
+        check(bound.controller.getBoundTaskIds().length == 0);
+        bound.stop();
+        check(bound.controller.getBoundTaskIds().length == 0);
         Fixture grab = new Fixture();
         grab.controller.setGrabEnabled(true);
         Object transform = grab.menu.parentDecor.taskSubspaceRepository.task.transform;

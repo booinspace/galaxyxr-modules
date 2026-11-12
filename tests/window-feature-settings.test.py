@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix="gxr-features-") as temporary:
         return result.stdout
 
     assert json.loads(run("json")) == dict(curvature=1, borderless=1, rotation=1, grab=0,
-                                          runtime="STOPPED", grabRuntime="off")
+                                          runtime="STOPPED", grabRuntime="off", captionReady=0)
     assert json.loads(run("set", "0", "1", "1", "1"))["grab"] == 1
     assert run("wire") == "features 0 1 1 1\n"
     previous = (work / "features.conf").read_bytes()
@@ -40,13 +40,20 @@ with tempfile.TemporaryDirectory(prefix="gxr-features-") as temporary:
     state.mkdir()
     (state / "module-path").write_text(str(work))
     (state / "status").write_text("RUNNING - supervised\n")
-    assert json.loads(run("json"))["grabRuntime"] == "tracking"
+    data = json.loads(run("json"))
+    assert data["grabRuntime"] == "tracking" and data["captionReady"] == 0
+    with (work / "runtime.log").open("a") as log:
+        log.write("GXR_BORDERLESS_READY\n")
+    assert json.loads(run("json"))["captionReady"] == 1
+    with (work / "runtime.log").open("a") as log:
+        log.write("GXR_BORDERLESS_STOPPED curvature supervisor stopped\n")
+    assert json.loads(run("json"))["captionReady"] == 0
     (work / "runtime.log").write_text("GXR_GRAB_STATE tracking\nGXR_GRAB_STATE waiting\n")
     assert json.loads(run("json"))["grabRuntime"] == "waiting"
     (work / "disable").touch()
     shutil.rmtree(state)
     data = json.loads(run("json"))
-    assert data["runtime"] == "DISABLED" and data["grabRuntime"] == "off"
+    assert data["runtime"] == "DISABLED" and data["grabRuntime"] == "off" and data["captionReady"] == 0
     (work / "disable").unlink()
     launch.rmdir()
     for malformed in ("CURVATURE=1\n", "CURVATURE=$(id)\n", previous.decode() + "GRAB=0\n",

@@ -13,7 +13,7 @@ function page(withRoot = true) {
             classList: {toggle() {}}, addEventListener(type, listener) { this.events[type] = listener; }});
     }
     const data = {curvature: 1, borderless: 1, rotation: 1, grab: 0,
-        runtime: 'RUNNING', grabRuntime: 'off'};
+        runtime: 'RUNNING', grabRuntime: 'off', captionReady: 0};
     const context = {document: {getElementById: id => elements.get(id)},
         setTimeout: () => 1, clearTimeout() {}, setInterval: cb => intervals.push(cb)};
     context.window = context;
@@ -30,6 +30,10 @@ test('settings UI sends fixed boolean commands and status refresh preserves pend
     await flush();
     assert.equal(f.elements.get('curvature').checked, true);
     assert.equal(f.elements.get('grab').checked, false);
+    assert.match(f.elements.get('runtime').textContent, /waiting up to 45 seconds/);
+    f.data.captionReady = 1;
+    await f.intervals[0]();
+    assert.match(f.elements.get('runtime').textContent, /App window setup: ready/);
     f.elements.get('curvature').checked = false;
     f.elements.get('grab').checked = true;
     f.elements.get('features').events.submit({preventDefault() {}});

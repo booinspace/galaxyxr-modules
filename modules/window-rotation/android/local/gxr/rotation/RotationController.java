@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.lang.ref.WeakReference;
 
@@ -111,6 +112,20 @@ public final class RotationController {
         windows.removeIf(old -> old.view.get() == null || old.taskId == info.taskId);
         if (windows.size() >= 32) throw new IllegalStateException("Too many caption bindings");
         windows.add(new Window(info.taskId, field(decor, "taskSubspaceRepository"), root));
+    }
+
+    /** Boundary eligibility follows live rotation bindings, even without a Curve menu. */
+    public synchronized int[] getBoundTaskIds() throws Exception {
+        if (stopping || !enabled || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000) return new int[0];
+        int[] ids = new int[windows.size()];
+        int count = 0;
+        for (Window window : windows) {
+            View view = window.view.get();
+            if (view == null || !view.isAttachedToWindow()) continue;
+            Object task = call(window.repository, "getTaskSubspace", new Class<?>[] {int.class}, window.taskId);
+            if (task != null && is2d(task)) ids[count++] = window.taskId;
+        }
+        return Arrays.copyOf(ids, count);
     }
 
     /** Reform callbacks can lack a looper; post rotation on the caption's owning view. */

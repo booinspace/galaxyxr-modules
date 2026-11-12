@@ -12,6 +12,7 @@ UPSTREAM = "https://github.com/BlueScorpioVR/galaxyxr-modules.git"
 COMMIT = "dd1a8915e3bbb8ea44f99033c8bc0dc8fdc22bd2"
 SYSTEMUI = "dc664a17617b97d2aafebac9690c4235f530cd24399fbe16b6634d5df2a6a6dc"
 RENDERER = "8342a55dd62163af3653dcf2153a842e243377897ced3ca00703603d275a3d7f"
+UI_RENDERER = "f6e34cf42f704c5d3ced9cca18dd392abf4925cde9e30c3b752a34be4102a809"
 IMPRESS = "ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42"
 FRAMEWORK = "6ec625a07d94e3e50d82eea14bcec05425de303a62a512e6b82ae57881c46ad7"
 ART = "afc9dde61f50e1e2b085c886e2bad7df98c433b28e0f01041221e1d138c321c5"
@@ -320,6 +321,51 @@ def integrate_features(work: Path, module: Path) -> None:
             "            return;\n        }")
 
 
+def integrate_boundary(module: Path) -> None:
+    """Align the stock boundary and corner selection with the rotated window."""
+    shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.24-azj2")
+    replace(module / "module.prop", "versionCode=120", "versionCode=125")
+    replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
+            "name=Galaxy XR Window Controls")
+    replace(module / "module.prop", "description=Experimental AZJ2 window controls with Action settings",
+            "description=AZJ2 window controls with aligned grab and resize boundaries, Action settings")
+    replace(module.parents[1] / "tools/build_window_curvature.py",
+            "'kind': 'disabled-experimental-kernelsu-module'", "'kind': 'disabled-kernelsu-module'")
+    pins = module / "firmware.sha256"
+    previous = dict((line.split('  ', 1)[1], line.split('  ', 1)[0]) for line in pins.read_text().splitlines())
+    expected = {**previous, "/system_ext/lib64/libsysui_jni_soong_vulkan.so": UI_RENDERER}
+    pins.write_text(pins.read_text() + f"{UI_RENDERER}  /system_ext/lib64/libsysui_jni_soong_vulkan.so\n")
+    replace(module.parents[1] / "tools/check_window_curvature_package.py",
+            f"assert pins == {previous!r}", f"assert pins == {expected!r}")
+    agent = module / "agent/main.js"
+    replace(agent, "import {installGrabRotation} from './curvature-grab-agent.mjs';",
+            "import {installGrabRotation} from './curvature-grab-agent.mjs';\n"
+            "import {installBoundaryAlignment} from './curvature-boundary-agent.mjs';")
+    replace(agent, "let grab = null;", "let grab = null;\nlet boundary = null;\n"
+            "let boundaryTasks = new Set();\nlet boundaryDeadline = -Infinity;")
+    replace(agent, "    try { if (grab !== null) grab.stop(); }",
+            "    try { if (boundary !== null) boundary.stop(); }\n"
+            "    catch (error) { log('BOUNDARY_RESTORE_ERROR', {error: String(error)}); }\n"
+            "    try { if (grab !== null) grab.stop(); }")
+    replace(agent, "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);",
+            "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);\n"
+            "                            boundary = installBoundaryAlignment(id => !stopped && featureValues[2]\n"
+            "                                && boundaryTasks.has(id) && nowMs() < boundaryDeadline, fail);")
+    replace(agent, "                rotation.pulse(home);",
+            "                rotation.pulse(home);\n"
+            "                boundaryTasks = new Set(Array.from(rotation.getBoundTaskIds(), Number));\n"
+            "                boundaryDeadline = nowMs() + 2000;")
+    replace(agent, "                (rotation === null || rotation.isRestored())) {",
+            "                (rotation === null || rotation.isRestored()) &&\n"
+            "                (boundary === null || boundary.isRestored())) {")
+    replace(agent, "                clearInterval(timer);",
+            "                if (boundary !== null) boundary.dispose();\n"
+            "                clearInterval(timer);")
+    replace(agent, "log('STATE', {rotation:",
+            "log('STATE', {boundary: boundary === null ? null : boundary.getDiagnostics(), rotation:")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM, help="Pinned upstream URL or local clone")
@@ -329,6 +375,8 @@ def main() -> None:
                         help="Include rim hiding and hover caption in the shared runtime")
     parser.add_argument("--integrated-rotation", action="store_true",
                         help="Include pitch, yaw and roll in the shared runtime (requires --integrated-borderless)")
+    # Keep old build commands working; boundary alignment is now part of the combined build.
+    parser.add_argument("--experimental-boundary", action="store_true", help=argparse.SUPPRESS)
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
@@ -336,6 +384,8 @@ def main() -> None:
         parser.error("Choose only one combined-window build mode")
     if args.integrated_rotation and not args.integrated_borderless:
         parser.error("--integrated-rotation requires --integrated-borderless")
+    if args.experimental_boundary and not args.integrated_rotation:
+        parser.error("--experimental-boundary requires --integrated-rotation")
     for name in ("java", "ecj", "r8", "android_jar"):
         path = getattr(args, name).resolve()
         if not path.is_file():
@@ -442,6 +492,9 @@ def main() -> None:
             integrate_recovery(work, module)
             integrate_restart(work, module)
             integrate_features(work, module)
+            integrate_boundary(module)
+            subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/window-boundary-abi.test.py")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-grab-features.test.mjs"),
                             str(ROOT / "tests/window-settings-ui.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-feature-settings.test.py")], check=True)
@@ -454,7 +507,7 @@ def main() -> None:
             subprocess.run([sys.executable, str(ROOT / "tests/rotation-controller-host.test.py"),
                             "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
             subprocess.run(["node", str(ROOT / "tests/curvature-combined-lifecycle.mjs"),
-                            str(module / "agent/main.js"), "--rotation"], check=True)
+                            str(module / "agent/main.js"), "--rotation", "--boundary"], check=True)
             math_classes = Path(temporary) / "rotation-tests"
             subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
                             "-proc:none", "-failOnWarning", "-d", str(math_classes),
@@ -465,7 +518,9 @@ def main() -> None:
         (module / "install-info.txt").write_text(
             "AZJ2 port of BlueScorpioVR's window-curvature module. Installs DISABLED.\n"
             "Firmware I610UES3AZJ2 only; APK and native hashes are checked before attach.\n" +
-            ("One-injector borderless/curvature build is experimental; see README.md.\n"
+            ("Window Controls combines curvature, borderless and hand rotation in one runtime.\n"
+             if args.integrated_rotation else
+             "One-injector borderless/curvature build is experimental; see README.md.\n"
              if args.integrated_borderless else
              "Staggered startup with borderless is experimental; see README.md.\n"
              if args.stagger_borderless else
@@ -483,8 +538,9 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = "0.1.19" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
-        package = args.output / f"gxr-window-curvature-{version}-azj2-experimental-disabled.zip"
+        version = ("0.1.24-azj2" if args.integrated_rotation else
+                   ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
+        package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)
         print(package)

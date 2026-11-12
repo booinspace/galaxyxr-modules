@@ -4,10 +4,10 @@ The rotation helper supplies Pitch, Yaw, Roll and Reset rotation controls in
 the [combined Window Controls module](../../docs/CURVATURE.md). Stock hand
 dragging positions the window. Opt-in hand positional rotation follows the
 grabbing hand in pitch, yaw and roll. Action opens settings where grab rotation
-can be turned off while retaining the sliders. The user verified all three
-axes, release and aligned app input on 0.1.18. The 0.1.19 development build
-adds menu binding for existing windows and diagnostics; it has not been tested
-on the headset. Samsung's grab outline still uses its stock orientation.
+can be turned off while retaining the sliders. Device checks covered all three
+axes, release and aligned app input. The user confirmed matching movement
+boundaries and rotated resizing with 0.1.23. The current 0.1.24 package keeps
+that runtime and removes test labels from its metadata.
 
 The Java source is in `android/local/gxr/rotation/`. It owns a separate
 reference to the same CPM scene node, identifies it through `Node.equals()`,

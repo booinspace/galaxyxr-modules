@@ -62,8 +62,13 @@ wire|json)
       esac
     fi
     [ "$runtime" = RUNNING ] || grab_runtime=off
-    printf '{"curvature":%s,"borderless":%s,"rotation":%s,"grab":%s,"runtime":"%s","grabRuntime":"%s"}\n' \
-      "$CURVATURE" "$BORDERLESS" "$ROTATION" "$GRAB" "$runtime" "$grab_runtime"
+    caption_ready=0
+    if [ "$runtime" = RUNNING ]; then
+      last_caption=$(grep -E '^GXR_BORDERLESS_(READY|STOPPED)( |$)' "$MODDIR/runtime.log" 2>/dev/null | tail -1 || true)
+      [ "$last_caption" != GXR_BORDERLESS_READY ] || caption_ready=1
+    fi
+    printf '{"curvature":%s,"borderless":%s,"rotation":%s,"grab":%s,"runtime":"%s","grabRuntime":"%s","captionReady":%s}\n' \
+      "$CURVATURE" "$BORDERLESS" "$ROTATION" "$GRAB" "$runtime" "$grab_runtime" "$caption_ready"
   fi
   ;;
 *) echo 'Usage: features.sh json|wire|set curvature borderless rotation grab' >&2; exit 2 ;;

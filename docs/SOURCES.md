@@ -44,13 +44,14 @@ Runtime and build components:
 
 ## Window settings and wrist rotation
 
-The Action settings page and wrist-grab integration in development build
-0.1.19 are by [booinspace](https://github.com/booinspace). The native reader
+The Action settings page, wrist-grab integration and aligned movement/resize
+boundaries are by [booinspace](https://github.com/booinspace). The native reader
 observes the stock hand input event's full grip orientation and pinch state.
 See the [OpenXR standard grip pose](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html)
 for the hand-relative orientation convention. Its AZJ2 entry points and input
 layout checks come from inspection of the exact pinned compositor image.
-No compositor binary is included.
+The [boundary implementation](BOUNDARY-ALIGNMENT.md) uses the exact AZJ2
+UI renderer and point-conversion entry points. No compositor binary is included.
 
 ## BreadDoesStuff modules
 
