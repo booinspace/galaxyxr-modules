@@ -1,9 +1,31 @@
 # Experimental grab-boundary alignment
 
-**0.1.20 is a separate, unvalidated test build. Keep the working 0.1.18 ZIP.**
+**0.1.22 passed the initial AZJ2 boundary-alignment test. Keep the working
+0.1.18 ZIP as a fallback; restart and extended idle checks remain pending.**
 The working hand-grab implementation and its tested package are preserved in
 [commit 3a27dd3](https://github.com/booinspace/galaxyxr-modules/commit/3a27dd376bc16688179617129f7f956b35d6eb35).
-This experiment has not been installed or tested on the headset.
+In the 0.1.20 headset test, hand rotation started working after window binding
+became available, but the grab outline remained misaligned. The fresh export
+contained no fatal error and no `GXR_BOUNDARY_ALIGNED` event. That does not
+identify which callback or guard prevented alignment. The 0.1.21 headset test
+showed zero highlight, placeholder and resize callbacks while rotation worked.
+The original hooks targeted duplicate visual code in
+`libspaceflinger_jni_vulkan.so`. Stock startup code configures the UI scene
+with `sysui_jni_soong_vulkan`, and read-only live process maps confirmed that
+library is loaded in SystemUI. 0.1.22 targets its matching exports instead.
+
+On 12 November 2026 the user confirmed that the grab boundary now follows the
+rotated window. The exported 0.1.22 log recorded the UI renderer, 5,090 applied
+alignments, live hand-rotation updates and alignment on a recreated app window.
+No fatal error or quarantine marker appeared in that export. This establishes
+the initial alignment result, not extended idle or restart stability. The
+binary ZIP retains its original pre-test warning and checksum.
+
+Boundary eligibility now follows the rotation controller's attached 2D window
+bindings, with a two-second heartbeat deadline. Opening the Curve menu is not
+required to register a rotated window. Leaving Home Space, disabling rotation
+or losing the heartbeat revokes eligibility. There is still one injector in
+SystemUI; no injection into another process is added.
 
 ## What changes
 
@@ -24,7 +46,11 @@ restore the saved transforms before stock cleanup. Runtime shutdown waits for
 that restoration before detaching. It never acknowledges cleanup while an
 owned visual still needs restoration.
 
-The existing five firmware hashes remain mandatory. The boundary code also
+The existing five firmware hashes remain mandatory. The boundary build adds
+`/system_ext/lib64/libsysui_jni_soong_vulkan.so`, SHA-256
+`f6e34cf42f704c5d3ced9cca18dd392abf4925cde9e30c3b752a34be4102a809`.
+The UI library depends on the already pinned `libImpress-jni-vulkan.so`.
+The boundary code also
 checks 15 exported symbol offsets against the inspected AZJ2 libraries, bounds
 scene traversal, validates weak node handles and rejects invalid matrices.
 Collapsed or nonuniform transition scales are skipped because the stock TRS
@@ -38,7 +64,7 @@ Use the [combined build requirements](CURVATURE.md#build) and add
 `--experimental-boundary` to the command with both `--integrated-borderless`
 and `--integrated-rotation`. Without that flag the builder still produces
 0.1.19. The experimental output is
-`gxr-window-curvature-0.1.20-azj2-experimental-disabled.zip` and installs disabled
+`gxr-window-curvature-0.1.22-azj2-experimental-disabled.zip` and installs disabled
 under the same module ID as Window Controls. It is an update, not a second
 module to enable alongside it.
 
@@ -49,6 +75,21 @@ native C++ process tests real Frida struct returns and allocation cleanup;
 that check passed on the ARM64 Mac host. The full build also runs the existing
 window runtime, restart and rollback checks. These checks do not establish
 visual alignment or performance on the headset.
+
+The `boundary` object in each periodic `GXR_CURVATURE_STATE` entry records
+the renderer name,
+highlight/placeholder callback counts, resize calls, skip reasons, a bounded
+sample of scene-node names, successful applications and cached visual count.
+It logs no matrices, hand positions or quaternions. Zero callback counts mean
+the selected entry points were not observed; a skip reason shows where an
+observed callback stopped. A successful application still requires a visual
+headset check.
+
+Action settings now distinguishes runtime startup from app-window setup. A
+planned Soft restart waits for a 90-second SystemUI process age, then attaches
+caption hooks after another 45 seconds. Wait for **App window setup: ready**
+before closing and reopening a test app. Opening a window's top menu can bind
+it earlier, but does not retrofit its rim/pill hooks.
 
 The native calls use the documented
 [Frida JavaScript API](https://frida.re/docs/javascript-api/). Entry points and
@@ -62,8 +103,8 @@ and this visual alignment experiment are by
 
 1. Keep the 0.1.18 package available. Turn Window Controls off, fully reboot
    and regain temporary root with DirtyFrag Autorun off.
-2. Install 0.1.20 as an update, enable it and tap Action. Allow the existing
-   startup delays, then open a fresh ordinary app window.
+2. Install 0.1.22 as an update, enable it and tap Action. Wait for **App window
+   setup: ready**, then open a fresh ordinary app window and its top menu.
 3. Start with a small slider rotation. Grab and move the window; compare its
    outline with the visible content in pitch, yaw and roll. Then enable hand
    rotation and repeat. Check release, app input and resizing.

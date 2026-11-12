@@ -48,12 +48,15 @@ function showSettings(text) {
 }
 function showRuntime(data) {
     if (!['RUNNING', 'STARTING', 'STOPPED', 'DISABLED', 'QUARANTINED'].includes(data.runtime) ||
+        (data.captionReady !== 0 && data.captionReady !== 1) ||
         !['off', 'unknown', 'waiting', 'tracking', 'unavailable'].includes(data.grabRuntime)) {
         throw new Error('Invalid runtime status.');
     }
     document.getElementById('runtime').textContent =
         'Runtime: ' + data.runtime.toLowerCase() + ' · Hand tracking: ' + data.grabRuntime +
         (data.runtime === 'STARTING' ? ' · After a Soft restart, waiting for SystemUI’s 90-second startup guard.' : '') +
+        (data.runtime === 'RUNNING' ? (data.captionReady === 1 ? ' · App window setup: ready.'
+            : ' · App window setup: waiting up to 45 seconds after runtime start. Then close and reopen the app.') : '') +
         (data.grabRuntime === 'waiting' ? ' · No fresh tracked hand pose.' : '');
 }
 async function perform(action) {

@@ -80,8 +80,8 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
     };
     const offsets = [0x12e24f8, 0x12f1964, 0x12ec70c, 0x12ebe2c, 0x12ec75c, 0x12ecc64, 0x12ec510];
     Object.keys(implementations).slice(0, 7).forEach((s, i) => symbols.set(s, offsets[i]));
-    for (const [type, values] of [['15HighlightVisual', [0x4f2c870, 0x4f2cf6c, 0x4d27464, 0x4d27534]],
-        ['23ResizePlaceholderVisual', [0x4f35580, 0x4f353c8, 0x4d83ce8, 0x4d83db8]]]) {
+    for (const [type, values] of [['15HighlightVisual', [0x4d0ba98, 0x4d0c194, 0x4c97c60, 0x4c97d30]],
+        ['23ResizePlaceholderVisual', [0x4d1622c, 0x4d16074, 0x4c99828, 0x4c998f8]]]) {
         const names = [`_ZN2ix6moohan5sysui${type}6UpdateERKN3imp9FrameTimeE`,
             `_ZN2ix6moohan5sysui${type}21UpdateSizeAndPositionERKN8filament4math7details5TVec2IfEERKNS5_5TVec3IfEE`,
             `_ZN3imp13ComponentPoolIN2ix6moohan5sysui${type}EE12NotifyActiveEPNS_9ComponentEb`,
@@ -91,8 +91,9 @@ function fixture({wrongPin = false, oversizedChildren = false} = {}) {
     globalThis.Memory = {alloc, copy: (a, b, size) => memory.copy(memory, a.address, b.address, b.address + size)};
     const exported = (s, base) => { const p = ptr(base + symbols.get(s) + (wrongPin ? 4 : 0)); p.symbol = s; return p; };
     globalThis.Process = {getModuleByName: n => {
+        assert.ok(['libImpress-jni-vulkan.so', 'libsysui_jni_soong_vulkan.so'].includes(n), 'wrong renderer target: ' + n);
         const base = n.startsWith('libImpress') ? 0x20000000 : 0x10000000;
-        return {base: ptr(base), getExportByName: s => exported(s, base)};
+        return {name: n, base: ptr(base), getExportByName: s => exported(s, base)};
     }};
     globalThis.Module = {getGlobalExportByName: s => { const p = ptr(1); p.symbol = s; return p; }};
     globalThis.NativeFunction = function (p) { assert.ok(implementations[p.symbol]); return implementations[p.symbol]; };
@@ -119,9 +120,19 @@ test('native visuals align once per frame, preserve stock resize, and wait for c
     const update = '15HighlightVisual6Update', resize = '15HighlightVisual21UpdateSizeAndPosition';
     f.invoke(update, 301, () => f.invoke(resize));
     near(f.read(3), boundaryTransform(turn, baseline));
+    let diagnostics = boundary.getDiagnostics();
+    assert.equal(diagnostics.renderer, 'libsysui_jni_soong_vulkan.so');
+    assert.equal(diagnostics.highlightUpdates, 1);
+    assert.equal(diagnostics.resizes, 1);
+    assert.equal(diagnostics.aligned, 1);
+    assert.equal(diagnostics.last, 'aligned');
+    assert.ok(diagnostics.path.includes('window-task-42'));
+    diagnostics.parents.length = 0;
+    assert.deepEqual(boundary.getDiagnostics().parents, ['space-transform-task-42']);
     f.invoke(update, 301, () => near(f.read(3), baseline));
     near(f.read(3), boundaryTransform(turn, baseline)); // No cumulative rotation.
     f.invoke('23ResizePlaceholderVisual6Update', 302);
+    assert.equal(boundary.getDiagnostics().placeholderUpdates, 1);
     near(f.read(4), boundaryTransform(turn, baseline));
     const newSize = baseline.slice(); newSize[0] = 4;
     f.invoke(resize, 301, () => newSize.forEach((v, i) => f.scene.get(3).data.add(i * 4).writeFloat(v)));
@@ -169,6 +180,7 @@ test('unrepresentable transitions are skipped and malformed child vectors are fr
     nonuniform.forEach((v, i) => f.scene.get(2).data.add(i * 4).writeFloat(v));
     f.invoke('15HighlightVisual6Update'); near(f.read(3), baseline);
     assert.equal(f.writes, 0);
+    assert.equal(boundary.getDiagnostics().last, 'nonuniform-or-skewed');
     boundary.stop(); assert.equal(boundary.isRestored(), true); boundary.dispose();
     const bad = fixture({oversizedChildren: true}), failed = bad.start();
     bad.invoke('15HighlightVisual6Update');
@@ -177,4 +189,26 @@ test('unrepresentable transitions are skipped and malformed child vectors are fr
     assert.equal(bad.frees.length, 1);
     assert.equal(bad.writes, 0);
     assert.equal(failed.isRestored(), true); failed.dispose();
+});
+
+test('diagnostics distinguish absent callbacks, unmatched parents, missing windows and eligibility', () => {
+    const f = fixture(), boundary = f.start();
+    assert.equal(boundary.getDiagnostics().last, 'waiting-for-callback');
+    f.node(1, 'unmatched-parent', 0);
+    f.invoke('15HighlightVisual6Update');
+    assert.equal(boundary.getDiagnostics().rejected['parent-name'], 1);
+    assert.ok(boundary.getDiagnostics().parents.includes('unmatched-parent'));
+    f.node(1, 'space-transform-task-42', 0);
+    f.allowed.clear(); f.invoke('15HighlightVisual6Update');
+    assert.equal(boundary.getDiagnostics().last, 'task-not-ready');
+    f.allowed.add(42);
+    f.node(2, 'other-window', 1);
+    f.invoke('15HighlightVisual6Update');
+    assert.equal(boundary.getDiagnostics().last, 'window-missing');
+    assert.ok(boundary.getDiagnostics().path.includes('other-window'));
+    f.node(2, 'window-task-42', 1);
+    f.invoke('15HighlightVisual6Update');
+    assert.equal(boundary.getDiagnostics().last, 'identity');
+    assert.equal(f.writes, 0);
+    boundary.stop(); boundary.dispose();
 });

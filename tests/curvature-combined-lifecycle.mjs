@@ -12,9 +12,11 @@ function session() {
     let attached = 0, pulses = 0, stopRequests = 0, restored = false, id = 0;
     let rotationRestored = false, rotationStops = 0, rotationError = '', home = true;
     let boundaryRestored = !withBoundary, boundaryStops = 0, boundaryDisposals = 0;
+    let boundaryPermission = () => false;
     const rotationPulses = [];
     const rotation = {
         setEnabled() {}, setGrabEnabled() {},
+        getBoundTaskIds: () => home ? [42] : [],
         pulse: value => rotationPulses.push(value),
         shutdown() { rotationStops++; },
         isRestored: () => rotationRestored,
@@ -43,8 +45,11 @@ function session() {
     const context = {
         parseFeatureCommand, applyFeatureSettings,
         installGrabRotation: () => ({setEnabled() {}, pulse() {}, stop() {}}),
-        installBoundaryAlignment: () => ({stop() { boundaryStops++; }, isRestored: () => boundaryRestored,
-            dispose() { assert.ok(boundaryRestored); boundaryDisposals++; }}),
+        installBoundaryAlignment: allowed => {
+            boundaryPermission = allowed;
+            return {stop() { boundaryStops++; }, getDiagnostics: () => ({aligned: 0}), isRestored: () => boundaryRestored,
+                dispose() { assert.ok(boundaryRestored); boundaryDisposals++; }};
+        },
         Java: {
             use(name) { assert.ok(classes[name], name); return classes[name]; },
             ClassFactory: {get: () => factory}, perform: cb => cb(), retain: value => value,
@@ -74,6 +79,7 @@ function session() {
         leaveHome() { home = false; },
         restoreBoundary() { boundaryRestored = true; },
         boundaryStops: () => boundaryStops, boundaryDisposals: () => boundaryDisposals,
+        boundaryAllowed: id => boundaryPermission(id),
     };
 }
 
@@ -97,11 +103,13 @@ await running.context.rpc.exports.init();
 assert.equal(running.attached(), 1);
 running.context.pollAgent();
 assert.equal(running.pulses(), 1);
+if (withBoundary) assert.equal(running.boundaryAllowed(42), true, 'rotation binding does not require a Curve menu');
 if (withRotation) {
     assert.deepEqual(running.rotationPulses, [true]);
     running.leaveHome();
     running.context.pollAgent();
     assert.equal(running.rotationPulses.at(-1), false);
+    if (withBoundary) assert.equal(running.boundaryAllowed(42), false, 'Home Space exit revokes boundary eligibility');
 }
 running.context.rpc.exports.onFridaStdin('stop');
 assert.equal(running.stopRequests(), 1);

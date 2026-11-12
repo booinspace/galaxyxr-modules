@@ -14,7 +14,7 @@ export function boundaryTransform(window, visual) {
 
 /** Experimental visual alignment; never changes stock drag events or the app node. */
 export function installBoundaryAlignment(allowed, onError) {
-    const renderer = Process.getModuleByName('libspaceflinger_jni_vulkan.so');
+    const renderer = Process.getModuleByName('libsysui_jni_soong_vulkan.so');
     const impress = Process.getModuleByName('libImpress-jni-vulkan.so');
     function address(module, symbol, offset) {
         const value = module.getExportByName(symbol);
@@ -36,6 +36,12 @@ export function installBoundaryAlignment(allowed, onError) {
     const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     const records = new Map(), depths = new Map(), hooks = [];
     let stopping = false, applied = 0;
+    const diagnostics = {renderer: renderer.name, highlightUpdates: 0, placeholderUpdates: 0, resizes: 0,
+        rejected: {}, last: 'waiting-for-callback', parents: [], path: []};
+    function skip(reason) {
+        diagnostics.last = reason;
+        diagnostics.rejected[reason] = (diagnostics.rejected[reason] || 0) + 1;
+    }
     function handle(parts) {
         const result = Memory.alloc(16);
         result.writeU64(parts[0]);
@@ -76,7 +82,9 @@ export function installBoundaryAlignment(allowed, onError) {
     }
     function pathToWindow(node, target, depth = 0, budget = {remaining: 64}) {
         if (!valid(node) || --budget.remaining < 0) throw new Error('Invalid boundary scene graph');
-        if (name(node) === target) return [node];
+        const label = name(node);
+        if (diagnostics.path.length < 8) diagnostics.path.push(label);
+        if (label === target) return [node];
         if (depth === 4) return null;
         for (const child of children(node)) {
             const found = pathToWindow(child, target, depth + 1, budget);
@@ -97,37 +105,45 @@ export function installBoundaryAlignment(allowed, onError) {
         let record = records.get(key);
         if (record === undefined) {
             const node = handle(getNode(component));
-            if (!valid(node)) return;
+            if (!valid(node)) { skip('node-invalid'); return; }
             const owner = handle(parent(node));
-            if (!valid(owner)) return;
-            const match = /^space-transform-task-(\d+)$/.exec(name(owner));
-            if (match === null || !allowed(Number(match[1]))) return;
+            if (!valid(owner)) { skip('owner-invalid'); return; }
+            const label = name(owner);
+            if (diagnostics.parents.length < 8 && !diagnostics.parents.includes(label)) diagnostics.parents.push(label);
+            const match = /^space-transform-task-(\d+)$/.exec(label);
+            if (match === null) { skip('parent-name'); return; }
+            if (!allowed(Number(match[1]))) { skip('task-not-ready'); return; }
+            diagnostics.path = [];
             const path = pathToWindow(owner, 'window-task-' + match[1]);
-            if (path === null) return;
+            if (path === null) { skip('window-missing'); return; }
             if (records.size >= 64) throw new Error('Too many boundary visuals');
             record = {node, path, task: Number(match[1]), baseline: null};
             records.set(key, record);
         }
         if (!allowed(record.task) || record.path.some(node => !valid(node)) || !valid(record.node)) {
             records.delete(key);
+            skip('node-or-task-lost');
             return;
         }
         // A stock transition can replace or reparent nodes between frames.
         if (!same(parent(record.node), record.path[0]) || record.path.slice(1).some((node, i) =>
-            !same(parent(node), record.path[i]))) { records.delete(key); return; }
+            !same(parent(node), record.path[i]))) { records.delete(key); skip('path-changed'); return; }
         let window = identity;
         for (const node of record.path.slice(1)) window = boundaryTransform(window, matrix(node));
-        if (window.every((value, i) => Math.abs(value - identity[i]) < 1e-6)) return;
+        if (window.every((value, i) => Math.abs(value - identity[i]) < 1e-6)) { skip('identity'); return; }
         // SetLocalTrs decomposes TRS; a skewed or collapsed transition is not representable.
         const columns = [0, 4, 8].map(i => window.slice(i, i + 3));
         const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
         const scale = dot(columns[0], columns[0]);
         if (scale < 1e-10 || columns.some(c => Math.abs(dot(c, c) - scale) > scale * 1e-4) ||
-            [[0, 1], [0, 2], [1, 2]].some(([a, b]) => Math.abs(dot(columns[a], columns[b])) > scale * 1e-4)) return;
+            [[0, 1], [0, 2], [1, 2]].some(([a, b]) => Math.abs(dot(columns[a], columns[b])) > scale * 1e-4)) {
+            skip('nonuniform-or-skewed'); return;
+        }
         const baseline = matrix(record.node);
         const aligned = boundaryTransform(window, baseline);
         record.baseline = baseline;
         write(record.node, aligned);
+        diagnostics.last = 'aligned';
         if (++applied === 1) console.log('GXR_BOUNDARY_ALIGNED task=' + record.task);
     }
     function guarded(operation) {
@@ -135,8 +151,8 @@ export function installBoundaryAlignment(allowed, onError) {
         catch (error) { stopping = true; onError(error); }
     }
     const visuals = [
-        ['15HighlightVisual', 0x4f2c870, 0x4f2cf6c, 0x4d27464, 0x4d27534],
-        ['23ResizePlaceholderVisual', 0x4f35580, 0x4f353c8, 0x4d83ce8, 0x4d83db8],
+        ['15HighlightVisual', 0x4d0ba98, 0x4d0c194, 0x4c97c60, 0x4c97d30],
+        ['23ResizePlaceholderVisual', 0x4d1622c, 0x4d16074, 0x4c99828, 0x4c998f8],
     ];
     // All symbols are resolved before attaching; full library hashes are pinned by control.sh.
     const targets = visuals.map(([type, update, resize, active, cleanup]) => [
@@ -146,9 +162,10 @@ export function installBoundaryAlignment(allowed, onError) {
         [`_ZN3imp13ComponentPoolIN2ix6moohan5sysui${type}EE7CleanupERNS_9ComponentE`, cleanup],
     ].map(([symbol, offset]) => address(renderer, symbol, offset)));
     try {
-        for (const [update, resize, active, cleanup] of targets) {
+        for (const [index, [update, resize, active, cleanup]] of targets.entries()) {
             for (const target of [update, resize]) hooks.push(Interceptor.attach(target, {
                 onEnter(args) {
+                    diagnostics[target.equals(update) ? (index === 0 ? 'highlightUpdates' : 'placeholderUpdates') : 'resizes']++;
                     this.component = args[0];
                     const key = this.component.toString(), depth = depths.get(key) || 0;
                     depths.set(key, depth + 1);
@@ -169,6 +186,10 @@ export function installBoundaryAlignment(allowed, onError) {
     } catch (error) { for (const hook of hooks) hook.detach(); throw error; }
     return {
         stop() { stopping = true; },
+        getDiagnostics() {
+            return {...diagnostics, rejected: {...diagnostics.rejected}, parents: diagnostics.parents.slice(),
+                path: diagnostics.path.slice(), aligned: applied, cached: records.size};
+        },
         isRestored() { return stopping && depths.size === 0 && [...records.values()].every(r => r.baseline === null); },
         dispose() {
             if (!this.isRestored()) throw new Error('Boundary cleanup still pending');

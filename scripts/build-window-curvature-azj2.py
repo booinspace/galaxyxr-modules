@@ -12,6 +12,7 @@ UPSTREAM = "https://github.com/BlueScorpioVR/galaxyxr-modules.git"
 COMMIT = "dd1a8915e3bbb8ea44f99033c8bc0dc8fdc22bd2"
 SYSTEMUI = "dc664a17617b97d2aafebac9690c4235f530cd24399fbe16b6634d5df2a6a6dc"
 RENDERER = "8342a55dd62163af3653dcf2153a842e243377897ced3ca00703603d275a3d7f"
+UI_RENDERER = "f6e34cf42f704c5d3ced9cca18dd392abf4925cde9e30c3b752a34be4102a809"
 IMPRESS = "ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42"
 FRAMEWORK = "6ec625a07d94e3e50d82eea14bcec05425de303a62a512e6b82ae57881c46ad7"
 ART = "afc9dde61f50e1e2b085c886e2bad7df98c433b28e0f01041221e1d138c321c5"
@@ -323,34 +324,44 @@ def integrate_features(work: Path, module: Path) -> None:
 def integrate_boundary(module: Path) -> None:
     """Experimental visual-only alignment; keep it out of the default build."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.20-azj2-experimental")
-    replace(module / "module.prop", "versionCode=120", "versionCode=121")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.22-azj2-experimental")
+    replace(module / "module.prop", "versionCode=120", "versionCode=123")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
-            "name=Galaxy XR Window Controls - Boundary Test")
+            "name=Galaxy XR Window Controls - Boundary Diagnostics")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls",
-            "description=BOUNDARY TEST - not validated on headset. Experimental AZJ2 window controls")
+            "description=BOUNDARY TEST - corrected UI renderer target; alignment remains unverified. Experimental AZJ2 window controls")
+    pins = module / "firmware.sha256"
+    previous = dict((line.split('  ', 1)[1], line.split('  ', 1)[0]) for line in pins.read_text().splitlines())
+    expected = {**previous, "/system_ext/lib64/libsysui_jni_soong_vulkan.so": UI_RENDERER}
+    pins.write_text(pins.read_text() + f"{UI_RENDERER}  /system_ext/lib64/libsysui_jni_soong_vulkan.so\n")
+    replace(module.parents[1] / "tools/check_window_curvature_package.py",
+            f"assert pins == {previous!r}", f"assert pins == {expected!r}")
     agent = module / "agent/main.js"
     replace(agent, "import {installGrabRotation} from './curvature-grab-agent.mjs';",
             "import {installGrabRotation} from './curvature-grab-agent.mjs';\n"
             "import {installBoundaryAlignment} from './curvature-boundary-agent.mjs';")
-    replace(agent, "let grab = null;", "let grab = null;\nlet boundary = null;")
+    replace(agent, "let grab = null;", "let grab = null;\nlet boundary = null;\n"
+            "let boundaryTasks = new Set();\nlet boundaryDeadline = -Infinity;")
     replace(agent, "    try { if (grab !== null) grab.stop(); }",
             "    try { if (boundary !== null) boundary.stop(); }\n"
             "    catch (error) { log('BOUNDARY_RESTORE_ERROR', {error: String(error)}); }\n"
             "    try { if (grab !== null) grab.stop(); }")
     replace(agent, "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);",
             "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);\n"
-            "                            boundary = installBoundaryAlignment(id => {\n"
-            "                                const entry = tasks.get(id);\n"
-            "                                return !stopped && featureValues[2] && entry !== undefined\n"
-            "                                    && nowMs() < entry.deadline;\n"
-            "                            }, fail);")
+            "                            boundary = installBoundaryAlignment(id => !stopped && featureValues[2]\n"
+            "                                && boundaryTasks.has(id) && nowMs() < boundaryDeadline, fail);")
+    replace(agent, "                rotation.pulse(home);",
+            "                rotation.pulse(home);\n"
+            "                boundaryTasks = new Set(Array.from(rotation.getBoundTaskIds(), Number));\n"
+            "                boundaryDeadline = nowMs() + 2000;")
     replace(agent, "                (rotation === null || rotation.isRestored())) {",
             "                (rotation === null || rotation.isRestored()) &&\n"
             "                (boundary === null || boundary.isRestored())) {")
     replace(agent, "                clearInterval(timer);",
             "                if (boundary !== null) boundary.dispose();\n"
             "                clearInterval(timer);")
+    replace(agent, "log('STATE', {rotation:",
+            "log('STATE', {boundary: boundary === null ? null : boundary.getDiagnostics(), rotation:")
 
 
 def main() -> None:
@@ -363,7 +374,7 @@ def main() -> None:
     parser.add_argument("--integrated-rotation", action="store_true",
                         help="Include pitch, yaw and roll in the shared runtime (requires --integrated-borderless)")
     parser.add_argument("--experimental-boundary", action="store_true",
-                        help="Build the unvalidated 0.1.20 boundary alignment test (requires --integrated-rotation)")
+                        help="Build the unvalidated 0.1.22 UI boundary test (requires --integrated-rotation)")
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
@@ -515,7 +526,7 @@ def main() -> None:
         )
         guide = (ROOT / "docs/CURVATURE.md").read_bytes()
         if args.experimental_boundary:
-            guide = (b"# 0.1.20 BOUNDARY TEST - NOT HEADSET VALIDATED\n\n"
+            guide = (b"# 0.1.22 UI BOUNDARY TEST - NOT HEADSET VALIDATED\n\n"
                      b"Keep your working 0.1.18 ZIP. This native visual-alignment experiment can crash SystemUI.\n"
                      b"Test plan: https://github.com/booinspace/galaxyxr-modules/blob/codex/window-boundary-alignment/docs/EXPERIMENTAL-BOUNDARY.md\n\n") + guide
         (module / "README.md").write_bytes(guide)
@@ -530,7 +541,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = "0.1.20" if args.experimental_boundary else "0.1.19" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
+        version = "0.1.22" if args.experimental_boundary else "0.1.19" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
         package = args.output / f"gxr-window-curvature-{version}-azj2-experimental-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)
