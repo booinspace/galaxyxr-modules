@@ -90,7 +90,68 @@ int main(void) { tracefs_cleanup(); return 0; }
     assert subprocess.run(['sh','-c',helper+'\nLOG="$1"; escape_manager_cgroup','test',str(work/'cgroup.log')]).returncode==1
     print('Cgroup starts permit boot-owned contexts and refuse unverified app/freezer contexts')
 
-package=ROOT/'releases/gxr-root-face-tracking-azj2-0.1.1-disabled.zip'
+    cgroup_root=work/'cgroup-root'
+    destination=cgroup_root/'gxr-root-ft-azj2'
+    destination.mkdir(parents=True)
+    (cgroup_root/'cgroup.controllers').write_text('')
+    (cgroup_root/'cgroup.procs').write_text('')
+    (destination/'cgroup.freeze').write_text('0\n')
+    mounts.write_text(f'56 40 0:25 / {cgroup_root} rw - cgroup2 none rw\n')
+    helper=helper.replace('/sys/fs/cgroup',str(cgroup_root))
+    # Model kernel membership readback separately from the write result.
+    readback='''
+unified_group() {
+  if [ "$(cat "$TEST_PROCS")" = "$$" ]; then echo /gxr-root-ft-azj2;
+  else echo /uid_10263/pid_6101; fi
+}
+printf() {
+  if [ "$#" -eq 2 ] && [ "$1" = '%s\\n' ] && [ "$2" = "$$" ]; then
+    echo 'printf: write: Invalid argument' >&2; return 1
+  fi
+  command printf "$@"
+}
+'''
+    for write_error in (False,True):
+        (destination/'cgroup.procs').write_text('')
+        echo_error='''
+echo() { command echo "$@"; [ "$#" -ne 1 ] || [ "$1" != "$$" ]; }
+''' if write_error else ''
+        log=work/f'cgroup-write-{write_error}.log'
+        script=helper+readback+echo_error+'\nLOG="$1"; TEST_PROCS="$2"; escape_manager_cgroup'
+        result=subprocess.run(['sh','-c',script,'test',str(log),str(destination/'cgroup.procs')],text=True,capture_output=True)
+        assert result.returncode==0,(result.stdout,result.stderr,log.read_text())
+        assert f'migration write={int(write_error)} actual=/gxr-root-ft-azj2' in log.read_text()
+        assert 'supervisor migrated out of app leaf (verified)' in log.read_text()
+    script=helper+readback+'\nunified_group() { echo /uid_10263/pid_6101; }\nLOG="$1"; TEST_PROCS="$2"; escape_manager_cgroup'
+    result=subprocess.run(['sh','-c',script,'test',str(work/'cgroup-refused.log'),str(destination/'cgroup.procs')],capture_output=True)
+    assert result.returncode==1
+    assert 'migration not verified' in (work/'cgroup-refused.log').read_text()
+    print('Cgroup migration avoids split printf writes, trusts verified membership and refuses unverified movement')
+
+    cleanup=controller[controller.index('  cleanup() {'):controller.index('\n  trap cleanup EXIT')]
+    for number,(attempted,enabled,cleanup_code,quarantined,retained) in enumerate([
+        (0,True,0,False,False), (1,True,0,True,False),
+        (1,False,0,False,False), (1,False,1,True,True),
+    ]):
+        module=work/f'cleanup-module-{number}'; (module/'bin').mkdir(parents=True)
+        runtime=work/f'cleanup-run-{number}'; runtime.mkdir()
+        (runtime/'service.log').write_text('fixture log\n')
+        native=module/'bin/gxr_alvr'; native.write_text(f'#!/bin/sh\nexit {cleanup_code}\n'); native.chmod(0o755)
+        script='''
+MODDIR="$1"; RUN="$2"; BOOT=fixture-boot
+LAUNCH_ATTEMPTED="$3"; CHILD="$4"; CHILD_ID=fixture-child; CLEAN=1
+allowed() { return "$5"; }
+same_process() { return 1; }
+live() { return 1; }
+'''.replace('return "$5"',f'return {0 if enabled else 1}')+cleanup+'\ncleanup\n'
+        result=subprocess.run(['sh','-c',script,'test',str(module),str(runtime),str(attempted),'999' if attempted else ''],text=True,capture_output=True)
+        assert result.returncode==0,(result.stdout,result.stderr)
+        assert (module/'failure').exists()==quarantined
+        assert runtime.exists()==retained
+        assert (module/'last-service.log').read_text()=='fixture log\n'
+    print('Prelaunch refusals stay retryable; unexpected relay exits and failed probe cleanup retain quarantine')
+
+package=ROOT/'releases/gxr-root-face-tracking-azj2-0.1.2-disabled.zip'
 if package.exists():
     with ZipFile(package) as archive:
         names=archive.namelist()

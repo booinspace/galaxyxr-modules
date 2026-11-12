@@ -16,6 +16,11 @@ escape_manager_cgroup() {
     echo "gxr-root-ft-azj2: cgroup: membership unreadable; not launching a freezer-bound relay" >>"$LOG"
     return 1
   }
+  {
+    printf 'gxr-root-ft-azj2: cgroup: supervisor=%s original=%s\n' "$$" "$original"
+    id
+    grep -E '^(CapEff|NoNewPrivs|Seccomp):' "/proc/$$/status"
+  } >>"$LOG" 2>&1
   case "$original" in
     /uid_*/pid_*)
       uid=${original#/uid_}; uid=${uid%%/*}
@@ -38,7 +43,7 @@ escape_manager_cgroup() {
   fi
   created=0
   if [ ! -d "$dest" ]; then
-    if ! mkdir -m 0755 "$dest" 2>/dev/null; then
+    if ! mkdir -m 0755 "$dest" 2>>"$LOG"; then
       echo "gxr-root-ft-azj2: cgroup: cannot create relay group; not launching a freezer-bound relay" >>"$LOG"
       return 1
     fi
@@ -52,13 +57,16 @@ escape_manager_cgroup() {
     echo "gxr-root-ft-azj2: cgroup: relay group not thawed; not launching a freezer-bound relay" >>"$LOG"
     return 1
   fi
-  if [ ! -e "$dest/cgroup.procs" ] ||
-     ! { printf '%s\n' "$$" > "$dest/cgroup.procs"; } 2>/dev/null; then
+  if [ ! -e "$dest/cgroup.procs" ]; then
     [ "$created" = 1 ] && rmdir "$dest" 2>/dev/null
-    echo "gxr-root-ft-azj2: cgroup: migration unavailable; not launching a freezer-bound relay" >>"$LOG"
+    echo "gxr-root-ft-azj2: cgroup: cgroup.procs missing; not launching a freezer-bound relay" >>"$LOG"
     return 1
   fi
+  # Android's external printf can split PID/newline writes and report EINVAL after migration.
+  write_status=0
+  { echo "$$" > "$dest/cgroup.procs"; } 2>>"$LOG" || write_status=$?
   actual=$(unified_group) || actual=unknown
+  printf 'gxr-root-ft-azj2: cgroup: migration write=%s actual=%s\n' "$write_status" "$actual" >>"$LOG"
   if [ "$actual" = /gxr-root-ft-azj2 ]; then
     echo "gxr-root-ft-azj2: cgroup: supervisor migrated out of app leaf (verified)" >>"$LOG"
     return 0
@@ -66,7 +74,7 @@ escape_manager_cgroup() {
   # A write can succeed but membership verification can fail. Restore this
   # shell to its original leaf before refusing the uncertain start.
   if [ "$actual" != "$original" ]; then
-    if ! { printf '%s\n' "$$" > "$root$original/cgroup.procs"; } 2>/dev/null ||
+    if ! { echo "$$" > "$root$original/cgroup.procs"; } 2>>"$LOG" ||
        [ "$(unified_group)" != "$original" ]; then
       echo "gxr-root-ft-azj2: cgroup: migration state unknown; not launching relay" >>"$LOG"
       return 1

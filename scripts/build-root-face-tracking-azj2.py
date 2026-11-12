@@ -66,7 +66,7 @@ def main():
             'binary_sha256': hashlib.sha256(blob).hexdigest(),
         }
         payload['bin/build-info.json'] = (json.dumps(receipt, indent=2, sort_keys=True) + '\n').encode()
-        package(args.output / 'gxr-root-face-tracking-azj2-0.1.1-disabled.zip', payload, executables=('bin/gxr_alvr',))
+        package(args.output / 'gxr-root-face-tracking-azj2-0.1.2-disabled.zip', payload, executables=('bin/gxr_alvr',))
 
 
 if __name__ == '__main__':

@@ -41,6 +41,7 @@ status() {
   elif owns && live "$owner" "$owner_id"; then echo STARTING
   else echo STOPPED; fi
   [ ! -f "$MODDIR/failure" ] || cat "$MODDIR/failure"
+  [ ! -f "$MODDIR/startup-error" ] || cat "$MODDIR/startup-error"
   stock && echo 'GXR_UPDATE_STATE=STOCK'
   return 0
 }
@@ -114,7 +115,7 @@ run)
   printf '%s\n' "$MODDIR" > "$RUN/module-path"
   printf '%s\n' "$$" > "$RUN/supervisor-pid"
   identity "$$" > "$RUN/supervisor-id"
-  CHILD='' CHILD_ID='' CLEAN=1
+  CHILD='' CHILD_ID='' CLEAN=1 LAUNCH_ATTEMPTED=0
   cleanup() {
     trap - EXIT INT TERM HUP
     expected=0
@@ -128,7 +129,7 @@ run)
     fi
     if [ -n "$CHILD" ] && live "$CHILD" "$CHILD_ID"; then CLEAN=0
     elif [ -n "$CHILD" ]; then "$MODDIR/bin/gxr_alvr" --cleanup >> "$RUN/service.log" 2>&1 || CLEAN=0; fi
-    if [ "$expected" != 1 ] || [ "$CLEAN" != 1 ]; then
+    if [ "$LAUNCH_ATTEMPTED" = 1 ] && { [ "$expected" != 1 ] || [ "$CLEAN" != 1 ]; }; then
       : > "$MODDIR/disable"
       echo 'Unexpected relay exit or unverified probe cleanup; full reboot required' > "$MODDIR/failure"
       printf '%s\n' "$BOOT" > "$MODDIR/failure-boot"
@@ -141,7 +142,12 @@ run)
   LOG="$RUN/service.log"
   : > "$LOG"
   . "$MODDIR/cgroup.sh"
-  escape_manager_cgroup || exit 1
+  if ! escape_manager_cgroup; then
+    echo 'Startup refused before tracking probes were launched; export logs for the cgroup error. Retry after correcting it; no reboot required for this refusal.' > "$MODDIR/startup-error"
+    exit 1
+  fi
+  rm -f "$MODDIR/startup-error"
+  LAUNCH_ATTEMPTED=1
   setsid "$MODDIR/bin/gxr_alvr" --pc "$pc" --port 41463 --state-dir "$STATE" >> "$LOG" 2>&1 &
   CHILD=$!
   CHILD_ID=$(identity "$CHILD")

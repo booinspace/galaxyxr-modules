@@ -38,13 +38,14 @@ The upstream offsets are retained. These checks support an experimental build;
 they do not establish live data quality or prove every vector length/semantic
 assumption. Host checks cover gaze maths, relay bookkeeping, private trace
 cleanup and the receiver packet format. **The AZJ2 probes and avatar output
-have not yet been tested live.** No stock vendor binaries are redistributed.
+must be verified in VRCFT before relying on this port.** No stock vendor binaries
+are redistributed.
 
 ## Install and use
 
 1. Have working temporary root in KernelSU GXR. Keep DirtyFrag Autorun off
    during the first test.
-2. Install `gxr-root-face-tracking-azj2-0.1.1-disabled.zip` through
+2. Install `gxr-root-face-tracking-azj2-0.1.2-disabled.zip` through
    **KernelSU GXR → Modules → Install from storage**. This is separate from
    Window Controls; do not install the unported upstream ZIP alongside it.
 3. On Windows, install the official root receiver using the
@@ -82,6 +83,9 @@ on the PC instead.
 - The upstream cgroup escape is retained with membership verification. An
   Action launch refuses to start if it cannot leave the Manager's app leaf;
   `setsid` alone would not prevent Android's cached-app freezer from pausing it.
+  Migration uses the shell's built-in `echo` and verifies membership afterward.
+  Android's external `printf` can report a write error after moving the process.
+  The log retains the write result, membership and root process context.
 - Settings and learned dilation state persist under
   `/data/adb/gxr-root-ft-azj2`. The WebUI exposes only destination, start/stop,
   status and log export. Upstream's gaze/tongue calibration remains unchanged.
@@ -98,6 +102,9 @@ Turn the KernelSU switch off and wait up to 20 seconds for owned probes to be
 removed. Action **Export logs** copies bounded health/status output to
 `/data/local/tmp/gxr-root-ft-runtime.log`; ordinary launch does not enable raw
 verbose face logging. Unexpected exits disable the module for that boot.
+If the cgroup check refuses startup before launching the relay, Action reports
+the startup error and allows a retry without rebooting. Quarantine still applies
+after a relay launch or unverified probe cleanup.
 After a full reboot, regain temporary root and explicitly re-enable it when
 ready. A full reboot clears live trace probes; installed module files and
 saved settings remain.
