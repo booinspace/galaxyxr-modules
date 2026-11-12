@@ -36,7 +36,7 @@ class BootRecoveryTest(unittest.TestCase):
             path.write_text("#!/bin/sh\n" + body + "\n")
             path.chmod(0o755)
         self.env = {**os.environ, "PATH": f"{commands}:{os.environ['PATH']}"}
-        for name in ("control.sh", "boot-recovery.sh", "recovery.sh", "action.sh", "restart.sh"):
+        for name in ("control.sh", "boot-recovery.sh", "recovery.sh", "action.sh", "restart.sh", "features.sh"):
             text = (SOURCE / name).read_text()
             for before, after in {
                 "/data/adb/modules": str(self.root / "modules"),

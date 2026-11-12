@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
+import {parseFeatureCommand, applyFeatureSettings} from '../scripts/curvature-features-agent.mjs';
 
 const source = readFileSync(process.argv[2], 'utf8').replace(/^import .*;\n/gm, '');
 const withRotation = process.argv.includes('--rotation');
@@ -11,6 +12,7 @@ function session() {
     let rotationRestored = false, rotationStops = 0, rotationError = '', home = true;
     const rotationPulses = [];
     const rotation = {
+        setEnabled() {}, setGrabEnabled() {},
         pulse: value => rotationPulses.push(value),
         shutdown() { rotationStops++; },
         isRestored: () => rotationRestored,
@@ -19,6 +21,7 @@ function session() {
     };
     const menuShow = {implementation: null};
     const factory = {use(name) {
+        if (name === 'local.gxr.rotation.WindowFeatures') return {curvature: {value: true}};
         if (name === 'local.gxr.rotation.RotationController') return {$new: () => rotation};
         if (name === 'local.gxr.curvature.MenuAttachment') {
             return {setRotationController: controller => assert.equal(controller, rotation)};
@@ -36,6 +39,8 @@ function session() {
         'com.android.wm.shell.windowdecor.XrCaptionMenu': {show: {overload: () => menuShow}},
     };
     const context = {
+        parseFeatureCommand, applyFeatureSettings,
+        installGrabRotation: () => ({setEnabled() {}, pulse() {}, stop() {}}),
         Java: {
             use(name) { assert.ok(classes[name], name); return classes[name]; },
             ClassFactory: {get: () => factory}, perform: cb => cb(), retain: value => value,
@@ -54,7 +59,7 @@ function session() {
         clearInterval: timer => intervals.delete(timer),
         installBorderless() {
             attached++;
-            return {pulse() { pulses++; }, stop() { stopRequests++; }, isStopped: () => restored};
+            return {setEnabled() {}, pulse() { pulses++; }, stop() { stopRequests++; }, isStopped: () => restored};
         },
     };
     runInNewContext(source + '\ninstallNative = () => {}; nowMs = () => 0; this.pollAgent = poll;', context);

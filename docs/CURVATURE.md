@@ -1,9 +1,11 @@
 # Window controls for Galaxy XR AZJ2
 
 The combined module adds curvature, borderless app windows, a hover-only
-caption pill, and pitch/yaw/roll controls to ordinary Home Space Android
-windows. It uses one supervised Frida injector and one Java-owned menu.
-The current window runtime resumed automatically after two consecutive GXR Soft
+caption pill, hand positional rotation and pitch/yaw/roll sliders to ordinary
+Home Space Android windows. Stock dragging moves the window; turning the
+grabbing hand rotates it in all three axes. It uses one supervised Frida
+injector and one Java-owned menu.
+The released 0.1.15 window runtime resumed automatically after two consecutive GXR Soft
 restarts on the AZJ2 headset, with its enabled state retained. The 90-second
 startup gate is a workaround for a native startup crash whose cause remains
 undetermined. Extended idle/wake stability remains unverified.
@@ -15,8 +17,8 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 
 1. Confirm KernelSU GXR reports **Working**. Keep separate Borderless and
    Rotation modules off. If updating an active window runtime, switch it off,
-   fully reboot, regain temporary root and run Recovery to acknowledge any
-   quarantine first.
+   fully reboot and regain temporary root first. The combined package handles
+   previous-boot quarantine through its built-in recovery checks.
 2. In **Modules → Install from storage**, choose the combined ZIP. It installs
    disabled. Use an in-place update; if the existing module is pending
    deletion, tap **Undo**, leave it off, then retry installation.
@@ -27,8 +29,14 @@ session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The current short filename is `Combined-0.1.15-booinspace.zip`.
+The released short filename is `Combined-0.1.15-booinspace.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
+The 0.1.18 ZIP includes the settings UI and hand-grab rotation tested on the
+headset in all three axes, including release and aligned app input. The
+0.1.19 development ZIP additionally binds restored windows through their top
+menu and adds grab diagnostics. Those additions remain untested on the device.
+Neither build aligns Samsung's grab outline with the rotated contents yet;
+keep a working 0.1.18 installation while that change is developed separately.
 
 ## After a cold boot
 
@@ -39,9 +47,8 @@ boot's diagnostics, acknowledges that old quarantine and starts once.
 
 If services have not started it, tap the combined module's **Action**. Action
 starts it when enabled and not already starting/running, waits up to 30 seconds
-for status, then exports logs. This start does not require a Soft restart or
-the separate Recovery helper. Action starts the runtime; it is not just a
-recovery/status screen. Allow the usual 45-second Borderless delay and recreate
+for status, then exports logs. This start does not require a Soft restart.
+Action starts the runtime and opens settings. Allow the usual 45-second Borderless delay and recreate
 an app window afterward.
 
 A crash still disables the module. After a full reboot, regain root, enable
@@ -92,12 +99,75 @@ match the tested 0.1.14 build byte for byte.
 - Point at the top caption area to reveal the pill. Moving away hides it after
   half a second. The caption parent and touch handler remain available for
   stock window dragging.
-- Stock hand dragging positions the window. Rotation uses the menu controls;
-  direct hand-grab rotation is not implemented.
+- Enable **Rotate while grabbing** in Action settings to turn the window with
+  your grabbing hand while stock dragging positions it. Turn it off to use
+  only the sliders.
 
 Settings belong to each live window and are not saved across SystemUI restart
 or window recreation. The module does not remove an app's own letterboxing.
 Pitch and yaw can make a panel edge-on or turn it away from you.
+
+## Feature settings and wrist grabs
+
+The development module's **Action** starts the enabled runtime, exports logs and
+opens a small settings page inside KernelSU GXR. No companion APK is needed.
+The page has switches for curvature, borderless windows, rotation controls and
+rotation while grabbing. **Apply settings** saves those choices across reboots
+and the running supervisor applies them on its next pulse. Reopen the window
+menu after applying. Disabling curvature flattens its windows; disabling
+borderless restores the last stock rim request and shows the pill. Disabling
+rotation restores its local orientation. Turning only grab rotation off keeps
+the current orientation and the Pitch, Yaw and Roll sliders.
+
+Grab rotation is **off by default** and experimental. It observes AZJ2's stock
+hand input events and uses the active hand-grip quaternion during stock move
+events. This follows the full hand orientation, including roll. The tracking
+frame is the hand grip/palm frame; it is not a raw wrist-joint measurement.
+The caption's owning view performs the node update; stock
+translation and event delivery continue. Each grab starts from the window's
+current orientation, so enabling it does not immediately turn the window.
+The math removes the parent's changing orientation before applying the hand
+delta. Roll is taken from the full hand quaternion.
+
+New windows bind to their caption when the delayed caption hook runs. A window
+created earlier can receive hand samples without creating a rotation session.
+In 0.1.19, opening its top menu also binds the existing caption, so grab
+rotation can work without recreating that window. The menu can close afterward;
+updates use the caption's view owner. This does not retrofit Borderless's rim
+and pill hooks onto an older window.
+
+The native reader checks the exact AZJ2 function addresses and code for
+HandDevice.updateState and AxrifInputManager.populateHandsSourceState. It
+reads the same InputActionEvent consumed by the stock handlers, bounds the
+action table, verifies the grip/pinch variant types and requires active grip
+data, a finite normalized quaternion and a sample age below 100 ms. It requires
+one hand with stock pinch-gesture strength at least 0.8. Two pinching hands, stale tracking or
+tracking loss cancel grab rotation until the next grab. The existing sliders
+remain available. Wrist data stays in process memory and is not logged.
+
+The user confirmed hand-grab rotation on AZJ2 with 0.1.18 after fully closing
+and reopening a window after the caption hook attached. Pitch, yaw and roll
+worked; orientation stayed in place after release and app input still lined
+up. The exported log showed accepted hand samples, selected grabs and a new
+rotation session. Samsung's movement outline still follows the stock parent
+orientation, so it can disagree with tilted contents. Boundary alignment,
+extended idle/wake behavior and tracking under difficult conditions remain
+unverified. Host tests establish parsing, quaternion math and cleanup behavior;
+they do not replace headset checks.
+The page reports hand tracking as waiting, tracking or unavailable. Waiting
+means no fresh accepted sample; the window runtime can still be running.
+The log records input callback/sample counts, grab counts and rejection reasons every
+10 seconds, without positions or quaternions. Export logs after a hand test
+to distinguish an idle native path from rejected samples. Startup reports
+STARTING during the 90-second Soft restart guard; that guard and the subsequent
+45-second Borderless delay remain unchanged.
+
+For the first check, keep grab rotation off and confirm the existing window
+features. Then enable it, wait for tracking, recreate one ordinary app window
+after the usual startup delay, and use a small wrist movement in each axis.
+Check release, dragging and app input before trying large angles. Turn grab
+rotation off and check the sliders again. Use the existing full reboot
+recovery procedure if SystemUI crashes.
 
 ## Compatibility and runtime
 
@@ -173,14 +243,6 @@ An absent failure file is normal. Check export timestamps before interpreting
 saved copies. Logs can contain app/task identifiers. Avoid another Soft
 restart while the window runtime is attached; stop it and fully reboot instead.
 
-When upgrading from an older build, keep the existing Recovery helper until
-the new combined package is installed and verified. An old controller may
-still require its quarantine to be acknowledged before accepting an update.
-After that one-time migration, the separate Recovery helper can be uninstalled.
-For 0.1.12, which cannot reset its own disabled quarantine through its Action
-screen, `Recovery-ONCE-0.1.5.zip` can perform that cleanup after a full reboot
-before installing this update. Keep the old window module off during cleanup.
-
 ## Build
 
 Requirements: Python with `frida==17.23.3`, Node 22, Java, ECJ 3.39.0,
@@ -200,7 +262,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.15-azj2-experimental-disabled.zip`
+The development output is `gxr-window-curvature-0.1.19-azj2-experimental-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
@@ -211,6 +273,9 @@ Bundled documentation and source receipts contribute to the ZIP checksum.
 The build runs upstream policy/mesh and Java safety tests plus local checks
 for node ownership, wrapper replacement, cleanup retry, heartbeat expiry,
 rotation math, shared failure handling and competing-window-runtime guards.
+The feature checks also exercise strict configuration parsing, persistent
+flags, live rim/pill restoration, wrist quaternion composition, unique-hand
+selection, invalid/stale OpenXR data and return to slider controls.
 Recovery checks cover previous-boot archival, same-boot refusal, identity
 validation, active runtimes, both integrity gates, disabled/removal markers,
 duplicate starts and Action's start/export behavior.
@@ -224,6 +289,3 @@ clock data before attachment.
 The disabled-package verifier checks checksums, executable modes, ARM64/Dex
 layout and all five firmware pins. The CMC patch is checked before applying
 it and its exact hash is recorded in `build.json`.
-
-Build Recovery with `python3 scripts/build-curvature-recovery.py` and run its
-host check with `python3 tests/curvature-recovery.test.py`.

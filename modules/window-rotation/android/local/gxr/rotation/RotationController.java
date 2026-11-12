@@ -11,15 +11,20 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.lang.ref.WeakReference;
 
 /** Java owns callbacks and rollback, including after the injector disappears. */
 public final class RotationController {
     private final List<Session> sessions = new ArrayList<>();
     private final List<Pending> pending = new ArrayList<>();
+    private final List<Window> windows = new ArrayList<>();
     private volatile long heartbeat = SystemClock.uptimeMillis();
     private volatile boolean stopping;
     private volatile boolean homeSpace = true;
+    private volatile boolean enabled = true;
+    private volatile boolean grabEnabled;
     private volatile String error = "";
+    private volatile String grabStatus = "idle";
 
     static Object field(Object object, String name) throws Exception {
         for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
@@ -68,6 +73,120 @@ public final class RotationController {
     public void pulse(boolean home) { homeSpace = home; pulse(); }
     public String getError() { return error; }
 
+    public synchronized void setEnabled(boolean value) {
+        enabled = value;
+        if (!value) for (Session session : sessions) session.handler.post(session::restore);
+    }
+
+    public synchronized void setGrabEnabled(boolean value) {
+        grabEnabled = value;
+        if (!value) cancelGrabs();
+    }
+
+    public synchronized void cancelGrabs() {
+        for (Session session : sessions) session.handler.post(() -> session.grabId = -1);
+    }
+
+    private static boolean excluded(String pkg) {
+        return "android".equals(pkg) || "com.android.systemui".equals(pkg)
+                || "com.samsung.android.app.xr.home".equals(pkg) || "me.weishu.kernelsu".equals(pkg);
+    }
+
+    private static final class Window {
+        final int taskId;
+        final Object repository;
+        final WeakReference<View> view;
+        Window(int taskId, Object repository, View root) {
+            this.taskId = taskId;
+            this.repository = repository;
+            view = new WeakReference<>(root);
+        }
+    }
+
+    /** The existing caption hook supplies the real view owner for grab callbacks. */
+    public synchronized void bindWindow(Object decor, View root) throws Exception {
+        if (stopping) return;
+        RunningTaskInfo info = (RunningTaskInfo) field(decor, "mTaskInfo");
+        if (info.topActivity == null || excluded(info.topActivity.getPackageName())) return;
+        windows.removeIf(old -> old.view.get() == null || old.taskId == info.taskId);
+        if (windows.size() >= 32) throw new IllegalStateException("Too many caption bindings");
+        windows.add(new Window(info.taskId, field(decor, "taskSubspaceRepository"), root));
+    }
+
+    /** Reform callbacks can lack a looper; post rotation on the caption's owning view. */
+    public synchronized void onGrab(Object transform, int id, int state, float[] hand,
+            float[] parent, long sampledAt) throws Exception {
+        if (!enabled || !grabEnabled || stopping || !homeSpace) { grabStatus = "inactive"; return; }
+        grabStatus = "not-bound";
+        for (Window window : windows) {
+            View view = window.view.get();
+            if (view == null || !view.isAttachedToWindow()) { grabStatus = "caption-detached"; continue; }
+            Object repository = window.repository;
+            int taskId = window.taskId;
+            Object task = call(repository, "getTaskSubspace", new Class<?>[] {int.class}, taskId);
+            if (task == null) continue;
+            if (!transform.equals(call(task, "getNonSpatializedTransformNode")) || !is2d(task)) {
+                grabStatus = "target-mismatch";
+                continue;
+            }
+            Object node = call(task, "getCpmWindowNode");
+            grabStatus = "queued";
+            if (!view.post(() -> {
+                try {
+                    if (!enabled || !grabEnabled || stopping || !homeSpace
+                            || !view.isAttachedToWindow()
+                            || SystemClock.uptimeMillis() - heartbeat > 5000) return;
+                    long age = SystemClock.uptimeMillis() - sampledAt;
+                    if (age < 0 || age > 150) {
+                        grabStatus = "stale";
+                        synchronized (RotationController.this) {
+                            for (Session old : sessions) if (old.taskId == taskId) old.grabId = -1;
+                        }
+                        return;
+                    }
+                    Object current = call(repository, "getTaskSubspace", new Class<?>[] {int.class}, taskId);
+                    if (current == null || !is2d(current) || !node.equals(call(current, "getCpmWindowNode"))) return;
+                    try { call(node, "getNativeHandle"); }
+                    catch (IllegalStateException closed) { return; }
+                    Session session = session(repository, node, taskId);
+                    if (state == 0 || state == 3) {
+                        if (session.grabId == id) session.grabId = -1;
+                        grabStatus = "released";
+                        return;
+                    }
+                    if (state == 1) {
+                        session.grabId = id;
+                        session.handStart = RotationMath.normalize(hand);
+                        session.parentStart = RotationMath.normalize(parent);
+                        session.localStart = session.orientation.clone();
+                        grabStatus = "started";
+                    } else if (state == 2 && session.grabId == id) {
+                        if (session.currentTask() == null) { session.grabId = -1; return; }
+                        session.orientation = RotationMath.grabbed(session.handStart, hand, session.parentStart,
+                                parent, session.localStart);
+                        int[] angles = RotationMath.degrees(session.orientation);
+                        System.arraycopy(angles, 0, session.angles, 0, 3);
+                        session.update();
+                        grabStatus = "applied";
+                        for (RotationMenu menu : session.menus) menu.root.post(menu::refresh);
+                    }
+                } catch (Exception failure) { fail(failure); }
+            })) throw new IllegalStateException("Caption rejected its grab callback");
+            return;
+        }
+    }
+
+    private synchronized Session session(Object repository, Object node, int taskId) throws Exception {
+        sessions.removeIf(old -> old.finished);
+        for (Session candidate : sessions) {
+            if (candidate.taskId == taskId && candidate.node.equals(node) && !candidate.closing) return candidate;
+        }
+        if (sessions.size() >= 16) throw new IllegalStateException("Too many rotation sessions");
+        Session created = new Session(repository, node, taskId);
+        sessions.add(created);
+        return created;
+    }
+
     void fail(Exception failure) {
         error = failure.toString();
         shutdown();
@@ -76,7 +195,8 @@ public final class RotationController {
     public synchronized String getStatus() {
         int active = 0;
         for (Session session : sessions) if (!session.finished) active++;
-        return "sessions=" + active + ",pending=" + pending.size();
+        return "sessions=" + active + ",pending=" + pending.size()
+                + ",bindings=" + windows.size() + ",grab=" + grabStatus;
     }
 
     public synchronized boolean isRestored() {
@@ -87,6 +207,7 @@ public final class RotationController {
 
     public synchronized void shutdown() {
         stopping = true;
+        windows.clear();
         for (Pending item : pending) item.view.removeCallbacks(item);
         pending.clear();
         for (Session session : sessions) session.handler.post(session::restore);
@@ -125,34 +246,23 @@ public final class RotationController {
     }
 
     private RotationMenu attachMenu(Object menu, View view, boolean sharedHost) throws Exception {
-        if (stopping || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000
+        if (stopping || !enabled || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000
                 || root(menu) != view || !view.isAttachedToWindow()) return null;
         Object decor = field(menu, "parentDecor");
         RunningTaskInfo info = (RunningTaskInfo) field(decor, "mTaskInfo");
         if (info.topActivity == null) return null;
         String pkg = info.topActivity.getPackageName();
-        if ("android".equals(pkg) || "com.android.systemui".equals(pkg)
-                || "com.samsung.android.app.xr.home".equals(pkg)
-                || "me.weishu.kernelsu".equals(pkg)) return null;
+        if (excluded(pkg)) return null;
+        // A restored window can predate the delayed caption hook; its menu can bind the real caption.
+        View caption = (View) field(field(decor, "relayoutResult"), "mRootView");
+        if (caption != null) bindWindow(decor, caption);
         Object repository = field(decor, "taskSubspaceRepository");
         Object task = call(repository, "getTaskSubspace", new Class<?>[] {int.class}, info.taskId);
         if (task == null || !is2d(task)) return null;
         Object node = call(task, "getCpmWindowNode");
         if (node == null) return null;
         call(node, "getNativeHandle");
-        Session session = null;
-        synchronized (RotationController.this) {
-            if (stopping) return null;
-            sessions.removeIf(old -> old.finished);
-            for (Session candidate : sessions) {
-                if (candidate.taskId == info.taskId && candidate.node.equals(node)) session = candidate;
-            }
-            if (session == null) {
-                if (sessions.size() >= 16) throw new IllegalStateException("Too many rotation sessions");
-                session = new Session(repository, node, info.taskId);
-                sessions.add(session);
-            }
-        }
+        Session session = session(repository, node, info.taskId);
         return session.addMenu(menu, view, sharedHost);
     }
 
@@ -163,6 +273,11 @@ public final class RotationController {
         final Handler handler;
         final List<RotationMenu> menus = new ArrayList<>();
         final int[] angles = {0, 0, 0};
+        float[] orientation = {1, 0, 0, 0};
+        int grabId = -1;
+        float[] handStart;
+        float[] parentStart;
+        float[] localStart;
         final Class<?> updatesType;
         final Method setOrientation;
         final Method apply;
@@ -174,7 +289,7 @@ public final class RotationController {
                 if (finished) return;
                 try {
                     Object task = currentTask();
-                    if (closing || stopping || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000
+                    if (closing || stopping || !enabled || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000
                             || task == null || !is2d(task)) {
                         restore();
                         return;
@@ -241,11 +356,13 @@ public final class RotationController {
                 throw new IllegalArgumentException("Invalid rotation control value");
             }
             Object task = currentTask();
-            if (closing || stopping || finished || !homeSpace || task == null || !is2d(task)
+            if (closing || stopping || !enabled || finished || !homeSpace || task == null || !is2d(task)
                     || SystemClock.uptimeMillis() - heartbeat > 5000) {
                 throw new IllegalStateException("Window is no longer eligible");
             }
             angles[axis] = degrees;
+            grabId = -1;
+            orientation = RotationMath.orientation(angles[0], angles[1], angles[2]);
             update();
             Log.i("GXRRotation", "task=" + taskId + " pitch=" + angles[0]
                     + " yaw=" + angles[1] + " roll=" + angles[2]);
@@ -254,11 +371,13 @@ public final class RotationController {
         void reset() throws Exception {
             if (currentTask() == null) throw new IllegalStateException("Task node was released");
             angles[0] = angles[1] = angles[2] = 0;
+            grabId = -1;
+            orientation = new float[] {1, 0, 0, 0};
             update();
         }
 
         private void update() throws Exception {
-            float[] q = RotationMath.orientation(angles[0], angles[1], angles[2]);
+            float[] q = orientation;
             Object updates = updatesType.getConstructor().newInstance();
             try {
                 setOrientation.invoke(updates, node, q[0], q[1], q[2], q[3]);
@@ -273,6 +392,8 @@ public final class RotationController {
             try {
                 // The owned same-node reference remains valid after stock closes its wrapper.
                 angles[0] = angles[1] = angles[2] = 0;
+                grabId = -1;
+                orientation = new float[] {1, 0, 0, 0};
                 update();
                 for (RotationMenu menu : menus) menu.close(true);
                 menus.clear();

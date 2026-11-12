@@ -64,13 +64,13 @@ def integrate_rotation(module: Path) -> None:
     for source in sorted((ROOT / "modules/window-rotation/android/local/gxr/rotation").glob("*.java")):
         shutil.copyfile(source, destination / source.name)
     props = module / "module.prop"
-    replace(props, "version=0.1.7-azj2-experimental", "version=0.1.15-azj2-experimental")
-    replace(props, "versionCode=108", "versionCode=116")
+    replace(props, "version=0.1.7-azj2-experimental", "version=0.1.19-azj2-experimental")
+    replace(props, "versionCode=108", "versionCode=120")
     replace(props, "name=Galaxy XR Curvature + Borderless Windows",
             "name=Galaxy XR Curvature + Borderless + Rotation")
     replace(props,
             "description=Experimental AZJ2 curvature with original rim hiding and hover caption after 45 seconds. One injector; installs disabled. Keep separate Borderless off.",
-            "description=Experimental AZJ2 curvature, rim/pill hiding, rotation, built-in recovery and coordinated Soft restart resume. Action starts and exports logs. Crashes remain quarantined. Keep separate window modules off. Installs disabled.")
+            "description=Experimental AZJ2 window controls with Action settings, curvature, borderless, rotation sliders and opt-in wrist-grab rotation. Built-in recovery and coordinated restart resume. Keep separate window modules off. Installs disabled.")
     pins = module / "firmware.sha256"
     pins.write_text(pins.read_text() + f"{FRAMEWORK}  /system/framework/framework.jar\n"
                     f"{ART}  /apex/com.android.art/lib64/libart.so\n")
@@ -145,7 +145,7 @@ def integrate_rotation(module: Path) -> None:
 
 def integrate_recovery(work: Path, module: Path) -> None:
     """Recover a previous full boot before attaching; keep same-boot quarantine."""
-    shutil.copyfile(ROOT / "modules/curvature-recovery/action.sh", module / "recovery.sh")
+    shutil.copyfile(ROOT / "scripts/curvature-recovery.sh", module / "recovery.sh")
     shutil.copyfile(ROOT / "scripts/curvature-boot-recovery.sh", module / "boot-recovery.sh")
     shutil.copyfile(ROOT / "scripts/curvature-action.sh", module / "action.sh")
     replace(work / "tools/build_window_curvature.py",
@@ -231,6 +231,93 @@ def integrate_restart(work: Path, module: Path) -> None:
     replace(control, '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi\n',
             '  if owns_state; then echo \'Stop remains pending; inspect runtime.log. Do not reattach.\'; exit 1; fi\n'
             '  clear_after_reboot || exit 1\n')
+
+
+def integrate_features(work: Path, module: Path) -> None:
+    """Use the existing root supervisor and Manager WebUI for persistent flags."""
+    shutil.copyfile(ROOT / "scripts/curvature-features.sh", module / "features.sh")
+    shutil.copytree(ROOT / "modules/window-controls/webroot", module / "webroot")
+    for name in ("curvature-features-agent", "curvature-grab-agent"):
+        shutil.copyfile(ROOT / f"scripts/{name}.mjs", module / "agent" / f"{name}.mjs")
+    builder = work / "tools/build_window_curvature.py"
+    replace(builder, "        'recovery.sh', 'boot-recovery.sh', 'restart.sh',",
+            "        'recovery.sh', 'boot-recovery.sh', 'restart.sh', 'features.sh',")
+    replace(builder, "    assert payload['disable'] == payload['skip_mount'] == b''",
+            "    for path in sorted((MODULE / 'webroot').iterdir()):\n"
+            "        if path.is_file(): payload['webroot/' + path.name] = path.read_bytes()\n"
+            "    assert payload['disable'] == payload['skip_mount'] == b''")
+    installer = module / "customize.sh"
+    replace(installer, "set_perm_recursive",
+            "previous_features=/data/adb/modules/gxr_window_curvature/features.conf\n"
+            'if [ -f "$previous_features" ] && [ "$MODPATH" != /data/adb/modules/gxr_window_curvature ]; then\n'
+            '  cp "$previous_features" "$MODPATH/features.conf" || abort "Cannot retain feature settings"\n'
+            "fi\n"
+            'sh "$MODPATH/features.sh" wire >/dev/null || abort "Invalid saved feature settings"\n'
+            "set_perm_recursive")
+    replace(installer, "uninstall.sh recovery.sh", "uninstall.sh features.sh recovery.sh")
+    with installer.open("a") as script:
+        script.write('\n[ ! -f "$MODPATH/features.conf" ] || set_perm "$MODPATH/features.conf" 0 0 0600\n')
+    control = module / "control.sh"
+    replace(control, "    printf 'pulse\\n' >&3 || { failed=1; break; }",
+            '    selected=$(sh "$MODDIR/features.sh" wire) || { failed=1; break; }\n'
+            '    printf "%s\\n" "$selected" >&3 || { failed=1; break; }\n'
+            "    printf 'pulse\\n' >&3 || { failed=1; break; }")
+
+    menu = module / "android/local/gxr/curvature/MenuAttachment.java"
+    text = menu.read_text().replace("controls.getRequiredHeight()", "curvatureHeight")
+    text = text.replace("        try {\n            parent.addView(controls",
+                        "        int curvatureHeight = local.gxr.rotation.WindowFeatures.curvature ? controls.getRequiredHeight() : 0;\n"
+                        "        if (curvatureHeight == 0) controls.setVisibility(View.GONE);\n"
+                        "        try {\n            parent.addView(controls")
+    menu.write_text(text)
+    controls = module / "android/local/gxr/curvature/CurvatureControls.java"
+    replace(controls, "            try { session.toggle(); update(); }",
+            "            if (!local.gxr.rotation.WindowFeatures.curvature) return;\n"
+            "            try { session.toggle(); update(); }")
+    replace(controls, "if (!fromUser || stopped) return;",
+            "if (!fromUser || stopped || !local.gxr.rotation.WindowFeatures.curvature) return;")
+    replace(controls, "if (!stopped) applyStrength(bar.getProgress());",
+            "if (!stopped && local.gxr.rotation.WindowFeatures.curvature) applyStrength(bar.getProgress());")
+
+    agent = module / "agent/main.js"
+    replace(agent, "import {installBorderless} from './borderless.mjs';",
+            "import {installBorderless} from './borderless.mjs';\n"
+            "import {installGrabRotation} from './curvature-grab-agent.mjs';\n"
+            "import {parseFeatureCommand, applyFeatureSettings} from './curvature-features-agent.mjs';")
+    replace(agent, "let rotation = null;",
+            "let rotation = null;\nlet grab = null;\nlet Features = null;\n"
+            "let featureValues = [true, true, true, false];\nlet appliedFeatures = '';\n"
+            "function refreshFeatures() {\n"
+            "    if (Features === null || grab === null || appliedFeatures === featureValues.join('')) return;\n"
+            "    applyFeatureSettings(featureValues, {Features, rotation, grab, borderless, tasks});\n"
+            "    appliedFeatures = featureValues.join('');\n"
+            "    log('SETTINGS', {curvature: featureValues[0], borderless: featureValues[1],\n"
+            "        rotation: featureValues[2], grab: featureValues[3]});\n}\n")
+    replace(agent, "    try { if (rotation !== null) rotation.shutdown(); }",
+            "    try { if (grab !== null) grab.stop(); }\n"
+            "    catch (error) { log('GRAB_RESTORE_ERROR', {error: String(error)}); }\n"
+            "    try { if (rotation !== null) rotation.shutdown(); }")
+    replace(agent, "                Attachment.setRotationController(rotation);",
+            "                Attachment.setRotationController(rotation);\n"
+            "                Features = factory.use('local.gxr.rotation.WindowFeatures');")
+    replace(agent, "                            installNative();",
+            "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);\n"
+            "                            refreshFeatures();\n                            installNative();")
+    replace(agent, "factory.use('local.gxr.curvature.CaptionVisibility'));",
+            "factory.use('local.gxr.curvature.CaptionVisibility'), featureValues[1], rotation);")
+    replace(agent, "                if (!entry.session.heartbeat())",
+            "                if (!featureValues[0] && entry.session.getValue() > 0) entry.session.set(0);\n"
+            "                if (!entry.session.heartbeat())")
+    replace(agent, "                rotation.pulse(home);",
+            "                rotation.pulse(home);\n"
+            "                if (grab !== null) grab.pulse(home);")
+    replace(agent, "        const command = line.trim();",
+            "        const command = line.trim();\n"
+            "        const values = parseFeatureCommand(command);\n"
+            "        if (values !== null && !stopped) {\n"
+            "            featureValues = values;\n"
+            "            Java.perform(() => { try { refreshFeatures(); } catch (error) { fail(error); } });\n"
+            "            return;\n        }")
 
 
 def main() -> None:
@@ -354,6 +441,10 @@ def main() -> None:
             patch_art_cmc(work, module)
             integrate_recovery(work, module)
             integrate_restart(work, module)
+            integrate_features(work, module)
+            subprocess.run(["node", "--test", str(ROOT / "tests/window-grab-features.test.mjs"),
+                            str(ROOT / "tests/window-settings-ui.test.mjs")], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/window-feature-settings.test.py")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/curvature-boot-recovery.test.py"),
                             str(module)], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/curvature-restart.test.py"),
@@ -392,7 +483,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = "0.1.15" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
+        version = "0.1.19" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
         package = args.output / f"gxr-window-curvature-{version}-azj2-experimental-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)

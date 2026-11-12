@@ -3,7 +3,7 @@ set -eu
 MODDIR=$(CDPATH= cd -P "${0%/*}" && pwd)
 STATE=/dev/gxr-window-curvature
 case "${1:-action}" in
-action)
+action|start)
   if [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] &&
       [ ! -f /dev/ksu-restart-stage/busy ] &&
       [ ! -d "$STATE" ] && [ ! -d /dev/gxr-window-curvature-launch ]; then
@@ -17,7 +17,13 @@ action)
     done
   fi
   sh "$MODDIR/control.sh" status
-  exec sh "$MODDIR/recovery.sh" export
+  sh "$MODDIR/recovery.sh" export
+  if [ "$#" -eq 0 ] || [ "$1" = action ]; then
+    am start --user 0 -a android.intent.action.VIEW \
+      -n me.weishu.kernelsu/.ui.webui.WebUIActivity \
+      -d 'ksu://webui?id=gxr_window_curvature' >/dev/null ||
+      echo 'Open this module’s WebUI in KernelSU GXR to change feature settings.'
+  fi
   ;;
 *) exec sh "$MODDIR/control.sh" "$@" ;;
 esac

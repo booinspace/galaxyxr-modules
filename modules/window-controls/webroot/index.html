@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- KernelSU GXR delivers root-command callbacks through a javascript: URL. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Window controls</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="settings.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">Galaxy XR · booinspace</p><h1>Window controls</h1>
+      <p>Choose how your floating app windows behave.</p></header>
+    <p id="status" role="status" aria-live="polite">Loading settings…</p>
+    <p id="runtime" class="hint" role="status" aria-live="polite"></p>
+    <form id="features">
+      <fieldset disabled id="switches"><legend>Features</legend>
+        <label><span><strong>Curvature</strong><small>Curve and strength controls in each window’s menu.</small></span><input type="checkbox" id="curvature"></label>
+        <label><span><strong>Borderless windows</strong><small>Hide the white rim and resting pill. Point at the top to show the pill.</small></span><input type="checkbox" id="borderless"></label>
+        <label><span><strong>Window rotation</strong><small>Pitch, yaw, roll and reset controls in each window’s menu.</small></span><input type="checkbox" id="rotation"></label>
+        <label><span><strong>Rotate while grabbing</strong><small>Experimental: follow the grabbing hand’s full orientation, including roll. Sliders stay available when this is off.</small></span><input type="checkbox" id="grab"></label>
+      </fieldset>
+      <button type="submit" id="save" disabled>Apply settings</button>
+    </form>
+    <p class="hint">Settings are saved across reboots. Reopen a window’s menu after applying. Temporary root must be active.</p>
+    <p class="hint">After a Soft restart, controls wait until SystemUI is 90 seconds old; borderless attaches 45 seconds later. Reopen app windows afterward.</p>
+    <div class="actions"><button id="start" disabled>Start window controls</button><button id="logs" disabled>Export logs</button></div>
+    <p class="hint">If the runtime is quarantined, use the existing full reboot recovery procedure before starting it.</p>
+  </main>
+</body>
+</html>

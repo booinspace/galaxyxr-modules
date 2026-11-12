@@ -12,11 +12,23 @@ Download the current ZIPs and checksum file from the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
 The combined ZIP contains curvature, borderless windows and rotation.
 
+Window Controls now includes **hand positional rotation**: grab a window to
+move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
+settings for curvature, borderless windows, rotation and rotation while
+grabbing. Grab rotation is off by default; the sliders remain available.
+The user verified all three axes, retained orientation after release and
+aligned app input on **0.1.18**. See
+[feature settings and wrist grabs](docs/CURVATURE.md#feature-settings-and-wrist-grabs).
+
+The local 0.1.19 development build also binds an existing window when its top
+menu opens and adds grab diagnostics. That change still needs a device test;
+it does not fix Samsung's untilted grab outline. Keep the working 0.1.18
+installation while boundary alignment is investigated separately.
+
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
-| Window controls | Curvature, white-rim removal, pill auto-hide, pitch/yaw/roll, recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
+| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, sliders, built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
 | Wear-aware dimming | Dims after 60 seconds without detected eyes while worn; keeps proximity removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear and eye APIs | [Wear/dim guide](modules/wear-dim/README.md) |
-| Legacy Recovery helper | Supports older installed window modules; current combined package includes recovery | [booinspace](https://github.com/booinspace) | [Recovery](docs/CURVATURE.md#recovery-and-logs) |
 | Mic gain boost | Adjusts microphone gain for selected recording modes | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
 | No low-light toast | Suppresses the low-light signal while retaining the dim-light pipeline | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Low-light guide](modules/no-lowlight-toast/README.md) |
@@ -50,7 +62,7 @@ restored window. The rim and resting pill hide; pointing at the top reveals
 the pill and retains dragging. The app's top menu contains Curve/Flatten,
 curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
-The current package is `Combined-0.1.15-booinspace.zip`. The build includes an
+The published baseline package is `Combined-0.1.15-booinspace.zip`. The build includes an
 ART/CMC bridge patch and checks the exact ART library hash before attachment.
 Recovery is built in: after a cold boot, module startup preserves diagnostics
 and acknowledges the previous boot's session automatically. **Action** starts
@@ -64,7 +76,6 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 - [Combined window build](scripts/build-window-curvature-azj2.py)
 - [Shared borderless agent](scripts/curvature-borderless-agent.mjs)
 - [Rotation helper source](modules/window-rotation/android/local/gxr/rotation/)
-- [Recovery builder](scripts/build-curvature-recovery.py)
 - [Bread ports and host checks](docs/BREAD-AZJ2.md)
 - [Sources, credits and licensing](docs/SOURCES.md)
 

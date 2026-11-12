@@ -132,6 +132,11 @@ public final class RotationMenu implements View.OnAttachStateChangeListener, Aut
         catch (Exception failure) { controller.fail(failure); }
     }
 
+    void refresh() {
+        if (closed) return;
+        for (int axis = 0; axis < 3; axis++) bars[axis].setProgress(session.angles[axis] + 180);
+    }
+
     void close(boolean dismiss) throws Exception {
         if (closed) return;
         root.removeOnAttachStateChangeListener(this);

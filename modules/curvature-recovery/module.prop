@@ -1,6 +1,0 @@
-id=gxr_curvature_recovery
-name=Galaxy XR curvature recovery
-version=0.1.5
-versionCode=6
-author=booinspace
-description=Exports logs and acknowledges curvature or borderless quarantine after a full reboot. Action only; no startup hook.

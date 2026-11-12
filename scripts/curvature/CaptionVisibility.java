@@ -7,6 +7,7 @@ import java.lang.ref.WeakReference;
 public final class CaptionVisibility implements AutoCloseable {
     private final WeakReference<View> view;
     private volatile boolean closing;
+    private volatile boolean enabled = true;
     private volatile boolean restored;
     private volatile String error;
     private final Runnable hide = () -> apply(View.INVISIBLE, false);
@@ -36,9 +37,16 @@ public final class CaptionVisibility implements AutoCloseable {
         if (!target.postDelayed(task, delay)) throw new IllegalStateException("Caption owner stopped");
     }
 
-    public void hide() { if (!closing) post(hide, 0); }
+    public void setEnabled(boolean value) {
+        enabled = value;
+        if (!closing) post(value ? hide : show, 0);
+    }
 
-    public void hover(boolean exiting) { if (!closing) post(exiting ? hide : show, exiting ? 500 : 0); }
+    public void hide() { if (!closing && enabled) post(hide, 0); }
+
+    public void hover(boolean exiting) {
+        if (!closing && enabled) post(exiting ? hide : show, exiting ? 500 : 0);
+    }
 
     public boolean owns(View candidate) { return view.get() == candidate; }
 

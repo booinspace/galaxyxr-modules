@@ -42,6 +42,16 @@ Runtime and build components:
   and [Android D8/R8](https://developer.android.com/tools/d8): host Java/DEX
   build tools. They are not installed on the headset.
 
+## Window settings and wrist rotation
+
+The Action settings page and wrist-grab integration in development build
+0.1.19 are by [booinspace](https://github.com/booinspace). The native reader
+observes the stock hand input event's full grip orientation and pinch state.
+See the [OpenXR standard grip pose](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html)
+for the hand-relative orientation convention. Its AZJ2 entry points and input
+layout checks come from inspection of the exact pinned compositor image.
+No compositor binary is included.
+
 ## BreadDoesStuff modules
 
 The [mic gain](../modules/mic-gain-boost/),

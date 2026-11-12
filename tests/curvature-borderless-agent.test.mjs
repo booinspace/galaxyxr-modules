@@ -19,6 +19,7 @@ function fixture() {
     const dispatchHover = method(function () { calls.push(['stock hover']); return false; });
     const viewClass = {};
     const classes = {
+        'android.graphics.CPM$NodeUpdates': {$new: () => ({apply() {}, close() {}})},
         'android.view.View': viewClass,
         'com.android.systemui.xr.spatial.impl.SpaceFlingerCpmSubgraph': {
             initialize: {overload: () => initialize},
@@ -39,10 +40,10 @@ function fixture() {
         cast(wrapper, type) { assert.equal(type, viewClass); return wrapper.view; },
         perform: callback => callback(),
         scheduleOnMainThread() { throw new Error('Caption owner is wmshell.main, not main'); },
-        retain: view => view,
+        retain: view => Object.assign(view, {$dispose() {}}),
     };
     const CaptionVisibility = {$new(view) {
-        let generation = 0, pending = null, closing = false, restored = false;
+        let generation = 0, pending = null, closing = false, restored = false, enabled = true;
         function schedule(value, delay) {
             const token = ++generation;
             if (pending !== null) timers.delete(pending);
@@ -54,7 +55,9 @@ function fixture() {
                 timers.set(id, () => { timers.delete(id); ownerQueue.push(apply); });
             } else ownerQueue.push(apply);
         }
-        return {hide: () => schedule(4, 0), hover: exit => schedule(exit ? 4 : 0, exit ? 500 : 0),
+        return {hide: () => schedule(4, 0),
+            setEnabled(value) { enabled = value; schedule(value ? 4 : 0, 0); },
+            hover: exit => { if (enabled) schedule(exit ? 4 : 0, exit ? 500 : 0); },
             owns: candidate => candidate === view, isCollected: () => false, getLastError: () => null,
             isRestored: () => restored, $dispose() {},
             close() {
@@ -140,6 +143,31 @@ test('restored task rims and hover pill retain stock event handling and stop ack
         assert.equal(hook.implementation, null);
     }
     assert.equal(f.logs.filter(line => line.startsWith('GXR_BORDERLESS_STOPPED')).length, 1);
+    assert.deepEqual(f.failures, []);
+});
+
+test('borderless toggle restores latest stock rim request and pill without stopping hooks', () => {
+    const f = fixture(), handle = f.context.handle;
+    const ordinary = {getWindowNode: () => ({getNativeHandle: () => 42})};
+    f.initialize.implementation.call(ordinary, f.updates, 'task-42', 0);
+    f.setupCaption.implementation.call({}, f.caption, {});
+    f.flushOwner();
+    assert.equal(f.background.visibility, 4);
+    handle.setEnabled(false);
+    f.flushOwner();
+    assert.equal(f.background.visibility, 0);
+    assert.deepEqual(f.calls.at(-1), ['rim', true]);
+    assert.notEqual(f.initialize.implementation, null);
+    f.setRim.implementation.call(ordinary, f.updates, false);
+    handle.setEnabled(true);
+    handle.setEnabled(false);
+    assert.deepEqual(f.calls.at(-1), ['rim', false], 'a stock-hidden rim must remain hidden');
+    handle.setEnabled(true);
+    f.flushOwner();
+    assert.equal(f.background.visibility, 4);
+    handle.stop();
+    f.flushOwner();
+    assert.equal(handle.isStopped(), true);
     assert.deepEqual(f.failures, []);
 });
 

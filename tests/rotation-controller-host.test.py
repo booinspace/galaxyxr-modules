@@ -51,8 +51,10 @@ import android.os.Handler;
 import android.os.Looper;
 public class View {
     private final Handler handler = new Handler(Looper.myLooper());
-    public boolean isAttachedToWindow() { return true; }
-    public boolean post(Runnable callback) { return handler.post(callback); }
+    public boolean attached = true;
+    public int posts;
+    public boolean isAttachedToWindow() { return attached; }
+    public boolean post(Runnable callback) { posts++; return handler.post(callback); }
     public void removeCallbacks(Runnable callback) { handler.removeCallbacks(callback); }
 }
 """,
@@ -120,6 +122,7 @@ public final class RotationMenu implements AutoCloseable {
         closed = true;
     }
     @Override public void close() throws Exception { close(false); }
+    void refresh() { }
 }
 """,
     "local/gxr/rotation/RotationControllerTest.java": """package local.gxr.rotation;
@@ -131,7 +134,9 @@ import android.view.View;
 public final class RotationControllerTest {
     public static final class State { public Boolean getValue() { return true; } }
     public static final class Task {
+        final Object transform = new Object();
         CPM.Node node = new CPM.Node(42);
+        public Object getNonSpatializedTransformNode() { return transform; }
         public CPM.Node getCpmWindowNode() { return node; }
         public State is2DRenderingEnabled() { return new State(); }
     }
@@ -142,7 +147,9 @@ public final class RotationControllerTest {
     public static final class Decor {
         final RunningTaskInfo mTaskInfo = new RunningTaskInfo();
         final Repository taskSubspaceRepository = new Repository();
+        final RelayoutResult relayoutResult = new RelayoutResult();
     }
+    public static final class RelayoutResult { final View mRootView = new View(); }
     public static final class Pill {
         final View view = new View();
         public View getView() { return view; }
@@ -214,6 +221,44 @@ public final class RotationControllerTest {
         catch (IllegalStateException expected) { check(CPM.Node.copy.closes == 1); }
         finally { CPM.Node.wrongCopy = false; }
         wrong.stop();
+        Fixture grab = new Fixture();
+        grab.controller.setGrabEnabled(true);
+        Object transform = grab.menu.parentDecor.taskSubspaceRepository.task.transform;
+        float[] initial = RotationMath.orientation(0, 0, 0);
+        float[] roll = RotationMath.orientation(0, 0, 90);
+        grab.controller.onGrab(transform, 7, 1, initial, initial, SystemClock.now);
+        Handler.runDue();
+        check(grab.controller.getStatus().contains("grab=not-bound"));
+        controls = grab.attach();
+        check(grab.controller.getStatus().contains("bindings=1"));
+        grab.menu.moreActionsPill.view.attached = false;
+        grab.controller.onGrab(transform, 7, 1, initial, initial, SystemClock.now);
+        Handler.runDue();
+        grab.controller.onGrab(transform, 7, 2, roll, initial, SystemClock.now);
+        Handler.runDue();
+        check(Math.abs(CPM.NodeUpdates.last[3] - .70710677f) < .00001f);
+        check(grab.menu.parentDecor.relayoutResult.mRootView.posts > 0);
+        check(grab.controller.getStatus().contains("grab=applied"));
+        grab.menu.moreActionsPill.view.attached = true;
+        controls = grab.attach();
+        check(controls.session.angles[2] == 90);
+        grab.controller.onGrab(transform, 7, 3, roll, initial, SystemClock.now);
+        Handler.runDue();
+        grab.controller.onGrab(transform, 7, 2, initial, initial, SystemClock.now);
+        Handler.runDue();
+        check(controls.session.angles[2] == 90);
+        grab.controller.setGrabEnabled(false); Handler.runDue();
+        controls.session.set(2, 20);
+        check(controls.session.angles[2] == 20);
+        grab.controller.onGrab(transform, 8, 1, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 8, 2, roll, initial, SystemClock.now);
+        Handler.runDue();
+        check(controls.session.angles[2] == 20);
+        grab.controller.setEnabled(false); Handler.runDue(); identity();
+        check(grab.attach() == null);
+        grab.controller.setEnabled(true);
+        check(grab.attach() != null);
+        grab.stop(); check(grab.controller.isRestored());
         System.out.println("PASS: shared/isolated attachment, node ownership, rollback retry, Home Space and heartbeat expiry");
     }
 }
