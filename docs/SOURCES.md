@@ -67,6 +67,9 @@ compatibility checks and builds.
 The mic Action UI, live settings and global recording scope in 0.2.0 are by
 [booinspace](https://github.com/booinspace). The upstream MIT notices remain
 included. The slider controls codec steps; acoustic dB gain is not calibrated.
+The 0.2.1 user-initiated recording helper and local playback controls are also
+by booinspace, using Android's public `AudioRecord` API. No audio is bundled
+or uploaded, and no KernelSU Manager microphone permission is added.
 
 ## Lighthouse alignment and video ports
 

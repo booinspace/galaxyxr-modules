@@ -22,11 +22,16 @@ button { min-height: 52px; padding: 14px 20px; border: 1px solid #596078; border
 button:disabled, fieldset:disabled { opacity: .55; cursor: default; }
 :focus-visible { outline: 3px solid #c2ccff; outline-offset: 4px; }
 .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+section { border-top: 1px solid #596078; margin-top: 28px; padding-top: 8px; }
+audio { width: 100%; margin-top: 20px; }
+.test-status { min-height: 28px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.test-status.error { color: #ffb4ab; }
 @media (prefers-color-scheme: light) {
   :root { color: #1a1c24; background: #f6f6fb; }
   header p, .hint, small { color: #50566a; }
   fieldset { background: #fff; }
   #status { background: #e5e9f6; }
   #status.error { color: #8a2026; background: #ffdad6; }
+  .test-status.error { color: #8a2026; }
   button { color: #1a1c24; background: #eceef7; border-color: #bcc1d2; }
 }

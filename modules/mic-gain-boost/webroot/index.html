@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- GXR delivers root-command callbacks through a javascript: URL. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'">
   <title>Mic gain</title>
   <link rel="stylesheet" href="style.css">
   <script src="settings.js" defer></script>
@@ -27,6 +27,14 @@
     </form>
     <p class="hint">Settings persist across reboots and apply live while the module is running. No Soft restart needed.</p>
     <p class="hint">Apps sharing the built-in input path share its hardware gain. USB and Bluetooth microphones are not controlled.</p>
+    <section aria-labelledby="test-title">
+      <h2 id="test-title">Test your microphone</h2>
+      <p class="hint">Turn Virtual Desktop only off for this test. Record saves the displayed settings, then captures 10 seconds. Try 0 gain first, listen, then repeat at a higher gain with the same speaking distance and playback volume.</p>
+      <div class="actions"><button id="record" disabled>Record 10 seconds</button><button id="delete-recording" disabled>Delete recording</button></div>
+      <p id="test-status" class="test-status" role="status" aria-live="polite">No recording yet. Record a clip to enable playback.</p>
+      <div class="actions"><button id="play-recording" disabled>Play recording</button><button id="stop-playback" disabled>Stop playback</button></div>
+      <p class="hint">One clip is kept locally on the headset until replaced or deleted. Playback uses the original recording level. Restore Virtual Desktop only afterward if that is your usual scope.</p>
+    </section>
     <div class="actions"><button id="start" disabled>Start mic boost</button><button id="logs" disabled>Export logs</button></div>
   </main>
 </body>

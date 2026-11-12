@@ -1,4 +1,7 @@
 Galaxy XR mic gain boost (AZJ2): installs DISABLED. AZJ2 only.
 Enable and tap Action to start and open mic gain settings. No Soft restart is needed.
 Slider: 0–40 codec steps. VD-only on preserves the existing behavior; off includes other mic apps.
+Record 10 seconds, then tap Play recording. Stop playback rewinds the clip.
+Recording status/errors appear beside Record. Turn VD-only off for
+the test; restore it afterward if wanted. Delete recording removes the local clip.
 New live controls/global mode require a device test; high gain can clip.

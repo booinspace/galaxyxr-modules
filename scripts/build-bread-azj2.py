@@ -40,6 +40,7 @@ def main():
     for name in ("java", "javac", "r8", "android-jar"):
         parser.add_argument("--" + name, required=True, type=Path)
     parser.add_argument("--output", type=Path, default=ROOT / "releases")
+    parser.add_argument("--module", choices=MODULES, help="Build only the requested port")
     args = parser.parse_args()
     for name in ("java", "javac", "r8", "android_jar"):
         value = getattr(args, name).resolve()
@@ -60,11 +61,13 @@ def main():
         probe = dex(args, probe_jar, None, work / "probe-dex")
         (args.output / "bread-azj2-api-probe.dex").write_bytes(probe)
 
-        for name in MODULES:
+        for name in ([args.module] if args.module else MODULES):
             module = ROOT / "modules" / name
             payload = {path.name: path.read_bytes() for path in module.iterdir() if path.is_file()}
             for path in sorted((module / "webroot").rglob("*")):
-                if path.is_file(): payload[path.relative_to(module).as_posix()] = path.read_bytes()
+                # User recordings are runtime data, never release inputs.
+                if path.is_file() and "recordings" not in path.relative_to(module / "webroot").parts:
+                    payload[path.relative_to(module).as_posix()] = path.read_bytes()
             helper_sources = sorted((module / "src").rglob("*.java"))
             stubs_sources = sorted((module / "stubs").rglob("*.java"))
             for source in helper_sources + stubs_sources:

@@ -10,16 +10,56 @@ only** switch. Changes persist across reboots and are loaded within the
 running helper's next 250 ms settings check, plus mixer command time. No
 Soft restart is needed. Zero removes this module's extra gain.
 
+Version **0.2.1** adds a 10-second recording and playback test in the same
+Action page. It uses the built-in microphone and keeps one local PCM WAV clip.
+Version **0.2.2** adds explicit **Play recording** / **Stop playback** buttons,
+status beside Record, and asynchronous capture so the page stays responsive.
+It also fixes Android mksh's file-descriptor handling in the recording lock.
+Version **0.2.3** exits the recorder after audio cleanup, avoiding a timeout
+while Android framework threads keep the VM alive. Playback uses Android's
+native MediaPlayer with a seekable MediaDataSource, so it can read the private
+clip without the WebView's failing stream path. Play is enabled only after
+the helper validates the WAV header and length.
+
 ## Install and use
 
 1. Regain temporary root; confirm KernelSU GXR says **Working**. Keep
    DirtyFrag Autorun off.
 2. If an older mic module is running, switch it off and wait about 15 seconds
-   for restoration. Install `gxr-mic-gain-boost-azj2-0.2.0-disabled.zip`.
+   for restoration. Install `gxr-mic-gain-boost-azj2-0.2.3-disabled.zip`.
 3. Enable **Galaxy XR mic gain boost (AZJ2)** and tap **Action**. This starts
    the helper and opens its settings page.
 4. Adjust **Gain boost**, choose the recording scope and tap **Apply settings**.
    Compare a short recording at identical app settings before increasing gain.
+
+## Record and listen back
+
+1. Open Action, turn **Virtual Desktop only** off and set gain to **0**.
+   The test recorder is a separate client, so it needs global recording scope.
+2. Tap **Record 10 seconds** and speak normally. This saves the displayed
+   settings before recording. Playback is paused during capture to avoid
+   recording its own sound.
+3. Tap **Play recording**. **Stop playback** stops and rewinds the clip;
+   the next Play starts at the beginning. Increase gain and repeat with the same
+   speaking distance and playback volume to compare. The next successful
+   recording replaces the previous clip; failed attempts preserve it.
+4. Tap **Delete recording** when finished. Restore **Virtual Desktop only**
+   and apply settings if that is your usual scope.
+
+Recordings use the same `VOICE_PERFORMANCE` source as the supported VD path,
+at 48 kHz, mono, 16-bit PCM. No normalization is applied. The recorder checks
+that Android routed capture to the built-in mic. Close other recording apps
+for a useful comparison. This test does not reproduce VD's later encoding
+or processing on the PC.
+
+Capture starts only from the Record button and stops after at most 10 seconds
+of samples; an outer timeout also bounds initialization or a stalled helper.
+Closing the page does not cancel an already requested clip; it finishes within
+that bound. Disabling the module stops capture. One private clip is stored at
+`webroot/recordings/mic-test.wav` inside this module. The native player reads
+it on the headset; no audio is sent through the WebView or debugging bridge,
+uploaded, or included in logs or release ZIPs.
+Updates or uninstalling can also remove the clip.
 
 **Virtual Desktop only** is on by default, preserving the previous behavior:
 boost while `virtualdesktop.android` uses `VOICE_PERFORMANCE` (source 10).
@@ -70,9 +110,11 @@ Temporary root must be regained after a full boot to reapply the effect.
 See [the port guide](../../docs/BREAD-AZJ2.md) for JDK/SDK build requirements.
 The builder includes source, MIT notices, firmware/payload pins and provenance.
 Run `python3 tests/mic-settings.test.py`, `node --test tests/mic-settings-ui.test.mjs`
-and the shared daemon lifecycle test as well as the builder's Java policy
+and `python3 tests/mic-recording.test.py` on Linux/WSL, plus the shared daemon lifecycle test and the builder's Java policy
 checks. Host tests cover global/VD eligibility, live gain baseline handling,
-restoration, validation and the UI's bounded root commands.
+restoration, validation, the UI's bounded root commands and the recording
+helper's WAV output and microphone release using synthetic Android audio.
+Recording/playback still needs a live headset test.
 
 The original module is by **BreadDoesStuff**, under MIT; see
 `LICENSE.upstream` and `THIRD_PARTY.md`. The AZJ2 port and live Action UI are by

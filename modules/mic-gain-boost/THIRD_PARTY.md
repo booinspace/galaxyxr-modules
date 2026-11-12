@@ -18,6 +18,8 @@ whole sensor pipeline.
 The 0.2.0 mic settings page, live gain changes and optional global recording
 scope are by booinspace. The original callback/mixer approach remains credited
 to BreadDoesStuff under the included MIT license.
+The 0.2.1 recording helper and local playback controls are by booinspace,
+using Android's public AudioRecord API. No recording is bundled or uploaded.
 
 API verification used the user's stock AZJ2 framework/SystemUI and mixer XML.
 Those proprietary binaries are not redistributed. Compile-only hidden API
