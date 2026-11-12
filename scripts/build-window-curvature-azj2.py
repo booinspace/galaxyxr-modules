@@ -322,14 +322,14 @@ def integrate_features(work: Path, module: Path) -> None:
 
 
 def integrate_boundary(module: Path) -> None:
-    """Experimental visual-only alignment; keep it out of the default build."""
+    """Experimental boundary and resize-hit alignment, outside the default build."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.22-azj2-experimental")
-    replace(module / "module.prop", "versionCode=120", "versionCode=123")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.23-azj2-experimental")
+    replace(module / "module.prop", "versionCode=120", "versionCode=124")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
-            "name=Galaxy XR Window Controls - Boundary Diagnostics")
+            "name=Galaxy XR Window Controls - Resize Test")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls",
-            "description=BOUNDARY TEST - corrected UI renderer target; alignment remains unverified. Experimental AZJ2 window controls")
+            "description=RESIZE TEST - rotated corner selection fix; device validation pending. Experimental AZJ2 window controls")
     pins = module / "firmware.sha256"
     previous = dict((line.split('  ', 1)[1], line.split('  ', 1)[0]) for line in pins.read_text().splitlines())
     expected = {**previous, "/system_ext/lib64/libsysui_jni_soong_vulkan.so": UI_RENDERER}
@@ -374,7 +374,7 @@ def main() -> None:
     parser.add_argument("--integrated-rotation", action="store_true",
                         help="Include pitch, yaw and roll in the shared runtime (requires --integrated-borderless)")
     parser.add_argument("--experimental-boundary", action="store_true",
-                        help="Build the unvalidated 0.1.22 UI boundary test (requires --integrated-rotation)")
+                        help="Build the unvalidated 0.1.23 rotated resize test (requires --integrated-rotation)")
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
@@ -526,8 +526,8 @@ def main() -> None:
         )
         guide = (ROOT / "docs/CURVATURE.md").read_bytes()
         if args.experimental_boundary:
-            guide = (b"# 0.1.22 UI BOUNDARY TEST - NOT HEADSET VALIDATED\n\n"
-                     b"Keep your working 0.1.18 ZIP. This native visual-alignment experiment can crash SystemUI.\n"
+            guide = (b"# 0.1.23 ROTATED RESIZE TEST - NOT HEADSET VALIDATED\n\n"
+                     b"Keep your working 0.1.18 ZIP. This native boundary experiment can crash SystemUI.\n"
                      b"Test plan: https://github.com/booinspace/galaxyxr-modules/blob/codex/window-boundary-alignment/docs/EXPERIMENTAL-BOUNDARY.md\n\n") + guide
         (module / "README.md").write_bytes(guide)
         replace(work / "tools/build_window_curvature.py",
@@ -541,7 +541,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = "0.1.22" if args.experimental_boundary else "0.1.19" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
+        version = "0.1.23" if args.experimental_boundary else "0.1.19" if args.integrated_rotation else "0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6"
         package = args.output / f"gxr-window-curvature-{version}-azj2-experimental-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)

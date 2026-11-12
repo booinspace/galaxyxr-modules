@@ -17,6 +17,7 @@ CPP = r'''
 struct Handle { std::uint32_t entity; std::uint32_t padding; void* context; };
 // AZJ2 libc++ returns pointer then length; host libstdc++ uses the opposite layout.
 struct TargetStringView { const char* data; std::size_t length; };
+struct Point3 { float x; float y; float z; };
 extern "C" __attribute__((visibility("default"))) Handle handle_value() {
     return {42, 0xff00ff00, reinterpret_cast<void*>(0x12345678)};
 }
@@ -26,6 +27,9 @@ extern "C" __attribute__((visibility("default"))) std::vector<Handle> child_valu
 }
 extern "C" __attribute__((visibility("default"))) TargetStringView name_value() {
     return {"space-transform-task-42", 23};
+}
+extern "C" __attribute__((visibility("default"))) Point3 transform_point(const Point3* value) {
+    return {value->x * 2 + 1, value->y * 3 - 2, value->z * 4 + 3};
 }
 extern "C" __attribute__((visibility("default"))) void release_values(void* value) {
     ::operator delete(value);
@@ -38,10 +42,13 @@ const call = (name, result, args = []) => new NativeFunction(module.getExportByN
 const handle = call('handle_value', ['uint64', 'pointer'])();
 const [begin, end, capacity] = call('child_values', ['pointer', 'pointer', 'pointer'])();
 const [text, length] = call('name_value', ['pointer', 'ulong'])();
+const point = Memory.alloc(12);
+[.25, -.5, 2].forEach((v, i) => point.add(i * 4).writeFloat(v));
+const transformed = call('transform_point', ['float', 'float', 'float'], ['pointer'])(point);
 const result = {entity: parseInt(handle[0].toString(16).slice(-8), 16),
     context: handle[1].toString(), bytes: Number(end.sub(begin).toString()),
     capacity: Number(capacity.sub(begin).toString()), first: begin.readU32(),
-    second: begin.add(16).readU32(), name: text.readUtf8String(Number(length))};
+    second: begin.add(16).readU32(), name: text.readUtf8String(Number(length)), transformed};
 call('release_values', 'void', ['pointer'])(begin);
 send(result);
 '''
@@ -78,9 +85,9 @@ def main():
             result = messages[0]['payload']
             assert result == {'entity': 42, 'context': '0x12345678', 'bytes': 32,
                               'capacity': 32, 'first': 1, 'second': 2,
-                              'name': 'space-transform-task-42'}, result
+                              'name': 'space-transform-task-42', 'transformed': [1.5, -3.5, 11]}, result
             script.unload()
-            print('PASS: real Frida NodeHandle/string_view/vector returns and allocator cleanup')
+            print('PASS: real Frida NodeHandle/string_view/vector/float3 returns and allocator cleanup')
         finally:
             if session is not None:
                 session.detach()

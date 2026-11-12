@@ -25,14 +25,12 @@ menu opens and adds grab diagnostics. That change still needs a device test;
 it does not fix Samsung's untilted grab outline. Keep the working 0.1.18
 installation while boundary alignment is investigated separately.
 
-The separate [boundary experiment](docs/EXPERIMENTAL-BOUNDARY.md) aims to make
-Samsung's movement outline follow the window transform. Rotation worked in
-the headset tests, but the outline stayed misaligned. The 0.1.21 diagnostics
-showed zero visual callbacks in the originally selected library. The 0.1.22
-candidate targets the UI scene library and uses live rotation bindings for
-eligibility. The user confirmed that its grab boundary follows rotation on
-AZJ2; exported logs confirm applications across recreated windows without a
-fatal error. Soft restart and extended idle checks remain pending. The tested
+The separate [boundary experiment](docs/EXPERIMENTAL-BOUNDARY.md) makes
+Samsung's movement outline follow the window transform. The user confirmed
+that 0.1.22 aligns the outline and returns after a Soft restart, but resize
+corners stop working when tilted and work again after Reset rotation.
+The 0.1.23 candidate corrects the corner test's coordinate conversion. Its
+host checks pass; rotated resizing still needs a headset test. The tested
 0.1.18 package is preserved separately.
 
 | Module | What it does | Creator and source | Guide |

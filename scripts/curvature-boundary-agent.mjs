@@ -12,7 +12,27 @@ export function boundaryTransform(window, visual) {
     });
 }
 
-/** Experimental visual alignment; never changes stock drag events or the app node. */
+function uniformScaleSquared(matrix) {
+    const columns = [0, 4, 8].map(i => matrix.slice(i, i + 3));
+    const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+    const scale = dot(columns[0], columns[0]);
+    return scale < 1e-10 || columns.some(c => Math.abs(dot(c, c) - scale) > scale * 1e-4) ||
+        [[0, 1], [0, 2], [1, 2]].some(([a, b]) => Math.abs(dot(columns[a], columns[b])) > scale * 1e-4)
+        ? null : scale;
+}
+
+export function resizeHitInParent(window, baseline, point) {
+    const aligned = boundaryTransform(window, baseline), scale = uniformScaleSquared(window);
+    if (scale === null || point.length !== 3 || !point.every(v => Number.isFinite(v) && Math.abs(v) <= 1e6)) {
+        throw new Error('Invalid resize hit transform');
+    }
+    const delta = point.map((v, i) => v - window[12 + i]);
+    // Stock corner tests subtract the aligned visual position but ignore its rotation.
+    return [0, 1, 2].map(i => delta.reduce((sum, v, j) => sum + window[i * 4 + j] * v, 0) / scale
+        + aligned[12 + i] - baseline[12 + i]);
+}
+
+/** Experimental boundary alignment; leaves stock drag events and the app node untouched. */
 export function installBoundaryAlignment(allowed, onError) {
     const renderer = Process.getModuleByName('libsysui_jni_soong_vulkan.so');
     const impress = Process.getModuleByName('libImpress-jni-vulkan.so');
@@ -21,8 +41,8 @@ export function installBoundaryAlignment(allowed, onError) {
         if (!value.equals(module.base.add(offset))) throw new Error('AZJ2 boundary symbol mismatch: ' + symbol);
         return value;
     }
-    function native(symbol, offset, result) {
-        return new NativeFunction(address(impress, symbol, offset), result, ['pointer']);
+    function native(symbol, offset, result, args = ['pointer']) {
+        return new NativeFunction(address(impress, symbol, offset), result, args);
     }
     const getNode = native('_ZNK3imp9Component7GetNodeEv', 0x12e24f8, ['uint64', 'pointer']);
     const valid = native('_ZNK3imp10NodeHandle7IsValidEv', 0x12f1964, 'bool');
@@ -32,11 +52,16 @@ export function installBoundaryAlignment(allowed, onError) {
     const getTrs = native('_ZNK3imp4Node11GetLocalTrsEv', 0x12ecc64, 'pointer');
     const setTrs = new NativeFunction(address(impress,
         '_ZN3imp4Node11SetLocalTrsERKN8filament4math7details6TMat44IfEE', 0x12ec510), 'void', ['pointer', 'pointer']);
+    const localFromWorld = native('_ZNK3imp4Node19LocalFromWorldPointERKN8filament4math7details5TVec3IfEE',
+        0x12ed824, ['float', 'float', 'float'], ['pointer', 'pointer']);
+    const worldFromLocal = native('_ZNK3imp4Node19WorldFromLocalPointERKN8filament4math7details5TVec3IfEE',
+        0x12ee4bc, ['float', 'float', 'float'], ['pointer', 'pointer']);
     const release = new NativeFunction(Module.getGlobalExportByName('_ZdlPv'), 'void', ['pointer']);
     const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     const records = new Map(), depths = new Map(), hooks = [];
     let stopping = false, applied = 0;
     const diagnostics = {renderer: renderer.name, highlightUpdates: 0, placeholderUpdates: 0, resizes: 0,
+        resizeHitTests: 0, resizeCornerHits: 0,
         rejected: {}, last: 'waiting-for-callback', parents: [], path: []};
     function skip(reason) {
         diagnostics.last = reason;
@@ -97,6 +122,7 @@ export function installBoundaryAlignment(allowed, onError) {
         if (record === undefined) return;
         if (record.baseline !== null && valid(record.node)) write(record.node, record.baseline);
         record.baseline = null;
+        record.window = null;
         if (discard) records.delete(key);
     }
     function apply(component) {
@@ -132,16 +158,13 @@ export function installBoundaryAlignment(allowed, onError) {
         for (const node of record.path.slice(1)) window = boundaryTransform(window, matrix(node));
         if (window.every((value, i) => Math.abs(value - identity[i]) < 1e-6)) { skip('identity'); return; }
         // SetLocalTrs decomposes TRS; a skewed or collapsed transition is not representable.
-        const columns = [0, 4, 8].map(i => window.slice(i, i + 3));
-        const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
-        const scale = dot(columns[0], columns[0]);
-        if (scale < 1e-10 || columns.some(c => Math.abs(dot(c, c) - scale) > scale * 1e-4) ||
-            [[0, 1], [0, 2], [1, 2]].some(([a, b]) => Math.abs(dot(columns[a], columns[b])) > scale * 1e-4)) {
+        if (uniformScaleSquared(window) === null) {
             skip('nonuniform-or-skewed'); return;
         }
         const baseline = matrix(record.node);
         const aligned = boundaryTransform(window, baseline);
         record.baseline = baseline;
+        record.window = window;
         write(record.node, aligned);
         diagnostics.last = 'aligned';
         if (++applied === 1) console.log('GXR_BOUNDARY_ALIGNED task=' + record.task);
@@ -161,6 +184,9 @@ export function installBoundaryAlignment(allowed, onError) {
         [`_ZN3imp13ComponentPoolIN2ix6moohan5sysui${type}EE12NotifyActiveEPNS_9ComponentEb`, active],
         [`_ZN3imp13ComponentPoolIN2ix6moohan5sysui${type}EE7CleanupERNS_9ComponentE`, cleanup],
     ].map(([symbol, offset]) => address(renderer, symbol, offset)));
+    const renderState = address(renderer,
+        '_ZN2ix6moohan5sysui16ReformController21GetCurrentRenderStateERKNSt3__18optionalIN3imp13GenericRayHitIfEEEE',
+        0x4d13470);
     try {
         for (const [index, [update, resize, active, cleanup]] of targets.entries()) {
             for (const target of [update, resize]) hooks.push(Interceptor.attach(target, {
@@ -183,6 +209,38 @@ export function installBoundaryAlignment(allowed, onError) {
             }}));
             hooks.push(Interceptor.attach(cleanup, {onEnter(args) { guarded(() => restore(args[1], true)); }}));
         }
+        hooks.push(Interceptor.attach(renderState, {
+            onEnter(args) {
+                guarded(() => {
+                    const controller = args[0], hit = args[1];
+                    if (stopping || hit.isNull() || hit.add(0x60).readU8() === 0 ||
+                        (controller.add(0x20).readU32() & 2) === 0) return;
+                    const highlight = controller.add(0x98).readPointer();
+                    const record = records.get(highlight.toString());
+                    if (record === undefined || record.baseline === null || !allowed(record.task) ||
+                        !valid(record.node) || record.path.some(node => !valid(node)) ||
+                        !same(getNode(controller), record.path[0]) || !same(parent(record.node), record.path[0])) return;
+                    const point = resizeHitInParent(record.window, record.baseline,
+                        localFromWorld(record.path[0], hit.add(0x14)));
+                    const local = Memory.alloc(12);
+                    point.forEach((v, i) => local.add(i * 4).writeFloat(v));
+                    const world = worldFromLocal(record.path[0], local);
+                    if (!world.every(v => Number.isFinite(v) && Math.abs(v) <= 1e6)) throw new Error('Invalid resize world point');
+                    // Only this classifier reads the copy; the original ray and resize events are unchanged.
+                    const copy = Memory.alloc(0x68);
+                    Memory.copy(copy, hit, 0x61);
+                    world.forEach((v, i) => copy.add(0x14 + i * 4).writeFloat(v));
+                    this.hitCopy = copy;
+                    args[1] = copy;
+                    diagnostics.resizeHitTests++;
+                });
+            },
+            onLeave(result) {
+                if (this.hitCopy !== undefined && result.toInt32() >= 2 && result.toInt32() <= 5) {
+                    diagnostics.resizeCornerHits++;
+                }
+            },
+        }));
     } catch (error) { for (const hook of hooks) hook.detach(); throw error; }
     return {
         stop() { stopping = true; },
