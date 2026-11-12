@@ -2,10 +2,12 @@
 
 import argparse
 from pathlib import Path
+import runpy
 import shutil
 import subprocess
 import sys
 import tempfile
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = "https://github.com/BlueScorpioVR/galaxyxr-modules.git"
@@ -24,6 +26,15 @@ def replace(path: Path, old: str, new: str) -> None:
     if data.count(old) != 1:
         raise ValueError(f"Expected one occurrence of {old!r} in {path}")
     path.write_text(data.replace(old, new))
+
+
+def check_gxr_installer_payload(package: Path) -> None:
+    """Apply this manager's startup/state restrictions after upstream ZIP checks."""
+    forbidden = runpy.run_path(str(ROOT / "scripts/port-package.py"))["FORBIDDEN"]
+    with ZipFile(package) as archive:
+        unsupported = forbidden.intersection(archive.namelist())
+    if unsupported:
+        raise ValueError("Unsupported GXR startup/state payload: " + ", ".join(sorted(unsupported)))
 
 
 def patch_art_cmc(work: Path, module: Path) -> None:
@@ -356,8 +367,8 @@ def integrate_features(work: Path, module: Path) -> None:
 def integrate_boundary(module: Path) -> None:
     """Align the stock boundary and corner selection with the rotated window."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.28-azj2")
-    replace(module / "module.prop", "versionCode=120", "versionCode=129")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.30-azj2")
+    replace(module / "module.prop", "versionCode=120", "versionCode=131")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
             "name=Galaxy XR Window Controls")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls with Action settings",
@@ -427,6 +438,25 @@ def integrate_home_pins(module: Path) -> None:
             "                if (boundary !== null) boundary.dispose();")
     replace(agent, "log('STATE', {boundary:",
             "log('STATE', {homePins: homePins === null ? null : homePins.getDiagnostics(), boundary:")
+
+
+def integrate_autostart(module: Path) -> None:
+    """Launch after verified restart even if the global service stage is skipped."""
+    shutil.copyfile(ROOT / "scripts/curvature-service.sh", module / "service.sh")
+    replace(module / "control.sh",
+            "After a full reboot, enable and tap Action to start. Action also exports logs.",
+            "Enabled modules start after GXR Soft restart. Action opens settings and exports logs.")
+    ready = "      printf '%s\\n' 'RUNNING - supervised, independent Home Space windows' > \"$STATE/status\""
+    replace(module / "control.sh", ready, ready + '\n'
+            '      if [ "${GXR_WINDOW_AUTOSTART:-0}" = 1 ]; then\n'
+            '        (umask 077\n'
+            '         report=$(mktemp /data/local/tmp/gxr-window-autostart.XXXXXX) || exit 1\n'
+            '         printf "AUTO_START_RUNNING\\nversion=%s\\ntarget=%s\\n" '
+            '"$(sed -n \'s/^version=//p\' "$MODDIR/module.prop")" "$target_identity" > "$report" &&\n'
+            '         chown 2000:2000 "$report" && chmod 600 "$report" &&\n'
+            '         mv -f "$report" /data/local/tmp/gxr-window-autostart.txt\n'
+            '        ) || echo "AUTO_START_REPORT_FAILED - runtime remains active."\n'
+            '      fi')
 
 
 def main() -> None:
@@ -558,6 +588,7 @@ def main() -> None:
             integrate_features(work, module)
             integrate_boundary(module)
             integrate_home_pins(module)
+            integrate_autostart(module)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-boundary-abi.test.py")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-grab-features.test.mjs"),
@@ -568,6 +599,9 @@ def main() -> None:
                             str(module)], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/curvature-restart.test.py"),
                             str(module)], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/curvature-autostart.test.py"),
+                            str(module)], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/window-installer-contract.test.py")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-controls-conflicts.test.py"),
                             str(module / "control.sh")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/rotation-controller-host.test.py"),
@@ -604,11 +638,12 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.28-azj2" if args.integrated_rotation else
+        version = ("0.1.30-azj2" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)
+        check_gxr_installer_payload(package)
         print(package)
 
 

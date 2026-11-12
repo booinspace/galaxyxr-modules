@@ -59,6 +59,10 @@ class RestartTest(unittest.TestCase):
             }.items():
                 text = text.replace(before, after)
             (self.module / name).write_text(text)
+        (self.module / "service.sh").write_text(
+            '#!/bin/sh\n'
+            f'printf "%s\\n" "$KSU_RESTART_GENERATION" >> "{self.root}/startup-requests"\n')
+        self.module.joinpath("module.prop").write_text("version=0.1.29-test\n")
         (self.module / "bin").mkdir()
         injector = self.module / "bin/frida-inject"
         injector.write_text(
@@ -106,14 +110,23 @@ class RestartTest(unittest.TestCase):
             time.sleep(0.05)
         self.fail((self.module / "service.log").read_text() if (self.module / "service.log").exists() else "Timed out")
 
-    def launch(self):
+    def launch(self, automatic=False):
+        env = {**self.env, "GXR_WINDOW_AUTOSTART": "1"} if automatic else self.env
         with (self.module / "service.log").open("a") as log:
-            controller = subprocess.Popen(["sh", str(self.module / "control.sh"), "run"], env=self.env,
+            controller = subprocess.Popen(["sh", str(self.module / "control.sh"), "run"], env=env,
                                           stdout=log, stderr=subprocess.STDOUT)
         self.controllers.append(controller)
         self.wait_for(lambda: self.state.joinpath("status").exists() and
                       self.state.joinpath("status").read_text().startswith("RUNNING"))
         return controller
+
+    def test_automatic_start_records_version_and_process_proof_without_action(self):
+        self.launch(automatic=True)
+        report = self.root / "localtmp/gxr-window-autostart.txt"
+        self.wait_for(report.exists)
+        text = report.read_text()
+        self.assertIn("AUTO_START_RUNNING\nversion=0.1.29-test\n", text)
+        self.assertIn("target=" + self.module.joinpath("session-open").read_text().strip(), text)
 
     def hook(self, phase, success=True):
         env = {**self.env, "KSU_RESTART_GENERATION": self.coord.joinpath("generation").read_text()}
@@ -158,6 +171,7 @@ class RestartTest(unittest.TestCase):
         self.hook("stopped")
         self.target = self.new_target()
         self.hook("started")
+        self.assertEqual(self.root.joinpath("startup-requests").read_text().strip(), GEN)
         self.coord.joinpath("busy").unlink()
         self.coord.joinpath("ready").touch()
         self.launch()

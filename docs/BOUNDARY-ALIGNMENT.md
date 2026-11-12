@@ -63,7 +63,7 @@ if cleanup is uncertain.
 
 Use the [combined build command](CURVATURE.md#build) with
 `--integrated-borderless --integrated-rotation`. The output is
-`gxr-window-curvature-0.1.28-azj2-disabled.zip` and its `.sha256` sidecar.
+`gxr-window-curvature-0.1.30-azj2-disabled.zip` and its `.sha256` sidecar.
 The former `--experimental-boundary` option is accepted for older build
 commands but is no longer needed.
 

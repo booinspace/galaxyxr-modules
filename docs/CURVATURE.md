@@ -13,8 +13,8 @@ becomes 50 m; an explicitly configured maximum is multiplied by ten. The near li
 movement sensitivity and ordinary app input are unchanged. The user confirmed
 movement beyond the old limit and correct outward/inward tilted resizing on
 AZJ2. This confirms the reported behavior, not a measured 50 m placement.
-Version 0.1.26 uses the device-tested 0.1.25 runtime. In-place installation
-without a full reboot is confirmed; the subsequent reload check is pending.
+The user confirmed in-place installation and automatic reload of 0.1.30 after
+one GXR Soft restart, with Home and window features working before Action.
 
 Planned GXR Soft restart resume has been verified on the headset. The 90-second
 startup gate is a workaround for a native startup crash whose cause remains
@@ -23,10 +23,11 @@ undetermined. Extended idle/wake stability remains unverified.
 This is a **KernelSU GXR module ZIP**. It requires an active temporary root
 session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 
-The **0.1.28 candidate** adds [up to 50 Home pins](HOME-PINS.md), with the same
+Version **0.1.30** adds [up to 50 Home pins](HOME-PINS.md), with the same
 five-column tiles and panel size. Scroll vertically above 10 pinned apps.
-Installation was confirmed on the headset; pinning and scrolling beyond 10
-still need a headset test. The existing window features are retained.
+The user confirmed automatic startup and working Home/window features. ADB
+matched the automatic RUNNING report to the installed version and live
+SystemUI full-boot/PID/start-time identity.
 This build waits for a 90-second SystemUI process age before every attachment,
 including ordinary starts after a full reboot. Earlier builds applied that
 age gate only to planned restart resume. A 0.1.26 ART crash occurred at 33
@@ -43,16 +44,17 @@ proof of the underlying native cause or a complete crash fix.
 2. In **Modules → Install from storage**, choose the combined ZIP. It installs
    disabled. Use an in-place update; if the existing module is pending
    deletion, tap **Undo**, leave it off, then retry installation.
-3. Enable **Galaxy XR Window Controls** and tap its
-   **Action** once to start it. After an update, if Action requests a Soft
-   restart, use one GXR **Soft restart**. Future GXR Soft restarts use the
-   coordinated handoff described below and restart the module automatically.
-4. Wait for **App window setup: ready** in Action settings, fully close an
-   ordinary app window and launch it again.
+3. Enable **Galaxy XR Window Controls** and use one GXR **Soft restart**.
+   The verified restart hook queues startup directly, even when the manager's
+   service stage has already been dispatched. Future GXR Soft restarts use
+   the coordinated handoff described below.
+4. Keep Home Space awake and allow up to **150 seconds**, then fully close an
+   ordinary app window and launch it again. Action settings can report
+   **App window setup: ready**, but opening Action is not required to start.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The Home pin candidate is `gxr-window-curvature-0.1.28-azj2-disabled.zip`.
+The current package is `gxr-window-curvature-0.1.30-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
 Boundary alignment is included in the combined build. The tested 0.1.23
 artifact remains available in the repository as a checkpoint.
@@ -76,17 +78,17 @@ replacement. Reinjecting into the same SystemUI process is still refused.
 
 Failed cleanup, an unexpected stop or an existing quarantine still blocks
 replacement and requires recovery. Pending removal/update markers and same
-or lower version codes remain rejected. The 0.1.25 → 0.1.26 installation was
-confirmed on the headset in the same full boot. The old runtime acknowledged
-cleanup and detached; the new version reported that one Soft restart was
-required. Validation after that restart is pending.
+or lower version codes remain rejected. The user confirmed the 0.1.30 update
+and automatic startup after one GXR Soft restart in the same full boot. The
+automatic RUNNING report matched the new version and live process identity.
 
 ## After a cold boot
 
 Leave the combined module enabled across normal shutdowns. Regain temporary
-root with DirtyFrag Autorun off. When the root manager starts module services,
-the combined module checks its payload and firmware, exports the previous
-boot's diagnostics, acknowledges that old quarantine and starts once.
+root with DirtyFrag Autorun off, then use one GXR Soft restart. This late-load
+setup does not dispatch ordinary module services immediately when root is
+loaded. The module checks its payload and firmware, preserves the previous
+boot's diagnostics and acknowledges that old quarantine before attachment.
 
 If services have not started it, tap the combined module's **Action**. Action
 starts it when enabled and not already starting/running, waits up to 30 seconds
@@ -109,13 +111,22 @@ caption cleanup; its injector must detach and its supervisor must exit. The
 module keeps its checkbox enabled during this planned stop.
 
 The stopped phase checks that the old SystemUI process has exited. The started
-phase records the new process identity after Android has booted. Once the
+phase records the new process identity after Android has booted and queues
+the module's startup worker. That worker returns control to the coordinator
+immediately and waits in the background for the matching restart generation.
+The normal service stage provides a fallback launch; the
+existing controller lock prevents duplicate attachment. Once the
 coordinator marks that restart ready, the service waits until that exact
 replacement process is at least 90 seconds old before consuming its one-use
 authorization and attaching again. The wait does not change the selected
 process or accept a later generation. Action can report STARTING during this
 wait. Allow up to 150 seconds after Home Space returns, then recreate an app
 window; Borderless still attaches 45 seconds after the agent starts.
+
+Automatic startup writes `/data/local/tmp/gxr-window-autostart.txt` after the
+runtime reaches RUNNING. It records the module version and full-boot/PID/start-
+time identity. Pull it over ADB before opening Action to verify activation
+independently; an older version or process identity is a stale report.
 Do not request another restart while startup is pending. Individual curve/rotation
 choices are not preserved when Android recreates the windows.
 
@@ -309,7 +320,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.28-azj2-disabled.zip`
+The output is `gxr-window-curvature-0.1.30-azj2-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit

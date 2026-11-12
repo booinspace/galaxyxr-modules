@@ -1,6 +1,6 @@
 # More pinned apps on Home
 
-Window Controls 0.1.28 adds a **50-app Home pin limit** on Galaxy XR AZJ2.
+Window Controls 0.1.30 adds a **50-app Home pin limit** on Galaxy XR AZJ2.
 Home keeps its panel size, tile dimensions and five columns. With more than
 10 pins, scroll vertically to reach the extra rows. With 10 or fewer, Samsung's
 existing centered layout stays in use. Pin, launch, reorder and unpin through
@@ -8,19 +8,26 @@ the existing launcher controls.
 
 This feature is included in the combined Window Controls ZIP and uses its
 existing SystemUI runtime. Temporary root and the enabled, running module are
-required. Host checks and the user's installation check passed. Pinning and
-scrolling beyond 10 still need a headset test.
+required. On 12 November 2026, the user confirmed that 0.1.30 installed and
+started automatically after a GXR Soft restart, with Home and window features
+working before opening Action. ADB confirmed the automatic-start version and
+live process identity. Extended idle/wake behavior remains unverified.
 
 ## Install and test
 
 1. Follow the [combined module update guide](CURVATURE.md#updating-without-a-full-reboot)
-   with `gxr-window-curvature-0.1.28-azj2-disabled.zip`.
-2. Enable Window Controls and tap Action. If it requests a Soft restart, use
-   one KernelSU GXR Soft restart and wait for the runtime to start.
+   with `gxr-window-curvature-0.1.30-azj2-disabled.zip`.
+2. Enable Window Controls and use one KernelSU GXR Soft restart. Keep Home
+   awake and allow up to 150 seconds for automatic startup. Check Home before
+   opening Action so manual activation cannot mask a failed automatic start.
 3. Open Home and pin an eleventh app using the usual app menu. Scroll within
    the pinned-app area to reach the third row and launch that app.
 4. Check reordering, unpinning and returning to 10 pins. Also check curvature,
    hand rotation, borders and normal app input, then use Action → Export logs.
+
+After a full power-off, regain temporary root first. This late-loaded root
+setup dispatches module services through a GXR Soft restart. Action remains
+available for settings, logs and manual recovery.
 
 The module changes no saved pin list. Stopping it restores the stock 10-app
 limit and layout. Extra saved pins can be hidden while the module is stopped;

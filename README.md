@@ -8,8 +8,8 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.26](https://github.com/booinspace/galaxyxr-modules/raw/refs/heads/main/releases/gxr-window-curvature-0.1.26-azj2-disabled.zip)
-and its [checksum](releases/gxr-window-curvature-0.1.26-azj2-disabled.zip.sha256).
+Download [Window Controls 0.1.30](releases/gxr-window-curvature-0.1.30-azj2-disabled.zip)
+and its [checksum](releases/gxr-window-curvature-0.1.30-azj2-disabled.zip.sha256).
 Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
 
@@ -24,9 +24,10 @@ outward/inward resizing while tilted on AZJ2. See
 [feature settings and wrist grabs](docs/CURVATURE.md#feature-settings-and-wrist-grabs).
 
 Updates stop the existing runtime cleanly before replacing the package.
-Enable the new version, tap Action and use one GXR Soft restart when requested.
-The 0.1.25 → 0.1.26 installation completed without a full reboot; validation
-of the replacement runtime after that restart is pending.
+Enable the new version and use one GXR Soft restart. The user confirmed the
+0.1.30 update and automatic activation with Home and window features working
+before opening Action. ADB verified the automatic-start version and live
+process identity.
 Updating from 0.1.24 or earlier can still require one final full reboot because
 the old package's shutdown guard runs before replacement.
 
@@ -34,15 +35,17 @@ The combined build includes [boundary alignment](docs/BOUNDARY-ALIGNMENT.md)
 by default. It uses the window's actual transform and keeps stock move events
 and resize input intact.
 
-The **0.1.28 candidate** also raises Home's pin limit to 50. It keeps the
+Version **0.1.30** also raises Home's pin limit to 50. It keeps the
 five-column tiles and panel size, adding vertical scrolling above 10 apps.
-This addition needs a headset test; see the [Home pins guide](docs/HOME-PINS.md).
+See the [Home pins guide](docs/HOME-PINS.md).
 The 90-second startup-age check now covers ordinary starts as well as planned
 restarts. A 0.1.26 crash occurred before that age; the native cause is unresolved.
+The verified restart hook now queues startup directly, with the normal service
+entry point as a fallback, so activation does not depend on opening Action.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
-| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, aligned movement/resize boundaries, 10× movement distance, sliders, up to 50 Home pins (candidate), built-in recovery and planned Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, boundary alignment, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
+| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, aligned movement/resize boundaries, 10× movement distance, sliders, up to 50 Home pins, built-in recovery and automatic Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, boundary alignment, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
 | Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
 | Mic gain boost | Action UI with live 0–40 step gain control, global or Virtual Desktop-only scope, and a local 10-second recording/playback test | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
@@ -86,9 +89,9 @@ Install from storage**. Keep separate Borderless and Rotation modules off.
 The combined module owns all window features through one injector, Java
 bridge, menu layout and rollback supervisor.
 
-After enabling it, tap the combined module's **Action** to start it. Planned
-GXR Soft restarts use cleanup hooks and a single-use handoff to resume in the
-new SystemUI process while keeping the module enabled. Automatic resume now
+After enabling it, use one **KernelSU GXR Soft restart**. The module starts
+automatically after cleanup hooks and a single-use handoff authorize the new
+SystemUI process. Keep the module enabled for later Soft restarts. Startup
 waits for a **90-second SystemUI process age**, then the usual **45-second**
 Borderless delay. Allow up to **150 seconds** after Home Space returns, then
 fully close and reopen an app window. The delay does not retrofit an already
@@ -96,7 +99,7 @@ restored window. The rim and resting pill hide; pointing at the top reveals
 the pill and retains dragging. The app's top menu contains Curve/Flatten,
 curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
-The current package is `gxr-window-curvature-0.1.26-azj2-disabled.zip`. The build
+The current package is `gxr-window-curvature-0.1.30-azj2-disabled.zip`. The build
 includes an ART/CMC bridge patch and checks the exact ART library hash before
 attachment.
 Recovery is built in: after a cold boot, module startup preserves diagnostics
