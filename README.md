@@ -5,8 +5,12 @@ KernelSU GXR modules for Samsung Galaxy XR SM-I610 running
 [booinspace](https://github.com/booinspace).
 
 These are module ZIPs installed after temporary root is active. The separate
-[Galaxy XR root project](https://git.puppy.boo/nathalie/galaxyxr-root) supplies
+[Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
+
+Download the current ZIPs and checksum file from the
+[AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
+The combined ZIP contains curvature, borderless windows and rotation.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
