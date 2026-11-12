@@ -119,6 +119,24 @@ class BootRecoveryTest(unittest.TestCase):
         self.state.mkdir()
         self.assertNotEqual(self.run_control("reset").returncode, 0)
 
+    def test_update_stop_acknowledges_a_previous_boot_crash_without_starting(self):
+        result = self.run_control("off")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("GXR_UPDATE_STATE=STOCK", result.stdout)
+        self.assertTrue((self.module / "disable").exists())
+        self.assertFalse((self.module / "failure").exists())
+        self.assertFalse((self.module / "session-open").exists())
+        self.assertFalse(self.state.exists())
+        self.assertFalse(self.launch.exists())
+        self.assertEqual(len(list(self.module.glob("*.pre-reset.*"))), 3)
+
+    def test_update_stop_cannot_clear_a_crash_from_the_same_boot(self):
+        (self.root / "boot").write_text(OLD_BOOT)
+        result = self.run_control("off")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("GXR_UPDATE_STATE=STOCK", result.stdout)
+        self.assert_preserved()
+
     def test_action_starts_once_and_exports_without_resetting_live_session(self):
         (self.module / "control.sh").write_text(
             '#!/bin/sh\ncase "$1" in\nrun)\n'

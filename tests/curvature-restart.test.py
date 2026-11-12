@@ -284,6 +284,49 @@ class RestartTest(unittest.TestCase):
         self.assertNotEqual(self.helper("authorize", old).returncode, 0)
         self.assertEqual(self.handoff.joinpath("new-target").read_text().strip(), current)
 
+    def cold_start(self):
+        fields = Path(f"/proc/{self.target.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+        ticks = int(subprocess.check_output(["getconf", "CLK_TCK"], text=True))
+        start_seconds = int(fields[19]) / ticks
+        (self.root / "uptime").write_text(f"{start_seconds + 33:.2f} 0\n")
+        # An ordinary first start has no restart generation or handoff.
+        self.coord.joinpath("generation").unlink()
+        self.coord.joinpath("ready").unlink()
+        with (self.module / "service.log").open("a") as log:
+            process = subprocess.Popen(["sh", str(self.module / "control.sh"), "run"],
+                                       env=self.env, stdout=log, stderr=subprocess.STDOUT)
+        self.controllers.append(process)
+        self.wait_for(lambda: "STARTUP_WAIT" in self.module.joinpath("service.log").read_text())
+        self.assertFalse(self.state.exists())
+        self.assertFalse(self.module.joinpath("injected-identity").exists())
+        self.assertFalse(self.root.joinpath("injector").exists())
+        return process, start_seconds
+
+    def test_cold_start_waits_for_process_age_before_any_injection(self):
+        process, start = self.cold_start()
+        self.assertIsNone(process.poll())
+        (self.root / "uptime").write_text(f"{start + 91:.2f} 0\n")
+        self.wait_for(lambda: self.state.joinpath("status").exists() and
+                      self.state.joinpath("status").read_text().startswith("RUNNING"))
+        self.assertFalse(self.module.joinpath("failure").exists())
+        self.assertIn("STARTUP_AGE_PASSED", self.module.joinpath("service.log").read_text())
+
+    def test_cold_start_cancellation_never_creates_a_crash_quarantine(self):
+        process, unused = self.cold_start()
+        self.module.joinpath("disable").touch()
+        process.wait(timeout=5)
+        self.assertFalse(self.module.joinpath("failure").exists())
+        self.assertFalse(self.state.exists())
+        self.assertFalse(self.root.joinpath("injector").exists())
+
+    def test_cold_start_process_replacement_never_attaches_to_the_old_target(self):
+        process, unused = self.cold_start()
+        self.target = self.new_target()
+        process.wait(timeout=5)
+        self.assertFalse(self.module.joinpath("failure").exists())
+        self.assertFalse(self.state.exists())
+        self.assertFalse(self.root.joinpath("injector").exists())
+
     def test_missing_cleanup_ack_aborts_before_android_stop(self):
         controller = self.launch()
         (self.root / "no-ack").touch()

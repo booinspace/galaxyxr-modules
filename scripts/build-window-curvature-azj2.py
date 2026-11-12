@@ -208,7 +208,11 @@ def integrate_restart(work: Path, module: Path) -> None:
     replace(control, "  target_identity=$(identity \"$target\")\n",
             "  target_identity=$(identity \"$target\")\n"
             "  [ -z \"${restart_target:-}\" ] || [ \"$target_identity\" = \"$restart_target\" ] || "
-            "fail 'SystemUI changed during the planned restart handoff'\n")
+            "fail 'SystemUI changed during the planned restart handoff'\n"
+            '  sh "$MODDIR/restart.sh" startup "$target_identity" || {\n'
+            '    echo "STARTUP_DEFERRED - no attachment performed; keep Home awake and retry Action."\n'
+            '    exit 1\n'
+            '  }\n')
     replace(control, "  failed=0\n", "  failed=0\n  planned=0\n")
     replace(control, "    trap - EXIT INT TERM HUP\n",
             "    trap - EXIT INT TERM HUP\n    planned_restored=0\n")
@@ -352,8 +356,8 @@ def integrate_features(work: Path, module: Path) -> None:
 def integrate_boundary(module: Path) -> None:
     """Align the stock boundary and corner selection with the rotated window."""
     shutil.copyfile(ROOT / "scripts/curvature-boundary-agent.mjs", module / "agent/curvature-boundary-agent.mjs")
-    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.27-azj2")
-    replace(module / "module.prop", "versionCode=120", "versionCode=128")
+    replace(module / "module.prop", "version=0.1.19-azj2-experimental", "version=0.1.28-azj2")
+    replace(module / "module.prop", "versionCode=120", "versionCode=129")
     replace(module / "module.prop", "name=Galaxy XR Curvature + Borderless + Rotation",
             "name=Galaxy XR Window Controls")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls with Action settings",
@@ -600,7 +604,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.27-azj2" if args.integrated_rotation else
+        version = ("0.1.28-azj2" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],

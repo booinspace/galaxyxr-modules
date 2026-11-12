@@ -1,6 +1,6 @@
 # More pinned apps on Home
 
-Window Controls 0.1.27 adds a **50-app Home pin limit** on Galaxy XR AZJ2.
+Window Controls 0.1.28 adds a **50-app Home pin limit** on Galaxy XR AZJ2.
 Home keeps its panel size, tile dimensions and five columns. With more than
 10 pins, scroll vertically to reach the extra rows. With 10 or fewer, Samsung's
 existing centered layout stays in use. Pin, launch, reorder and unpin through
@@ -8,13 +8,13 @@ the existing launcher controls.
 
 This feature is included in the combined Window Controls ZIP and uses its
 existing SystemUI runtime. Temporary root and the enabled, running module are
-required. The current build has host checks; pinning and scrolling beyond 10
-still need a headset test.
+required. Host checks and the user's installation check passed. Pinning and
+scrolling beyond 10 still need a headset test.
 
 ## Install and test
 
 1. Follow the [combined module update guide](CURVATURE.md#updating-without-a-full-reboot)
-   with `gxr-window-curvature-0.1.27-azj2-disabled.zip`.
+   with `gxr-window-curvature-0.1.28-azj2-disabled.zip`.
 2. Enable Window Controls and tap Action. If it requests a Soft restart, use
    one KernelSU GXR Soft restart and wait for the runtime to start.
 3. Open Home and pin an eleventh app using the usual app menu. Scroll within

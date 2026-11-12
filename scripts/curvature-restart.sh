@@ -37,9 +37,11 @@ if [ "${1:-}" = needs-restart ]; then
     [ "$previous" = "$(current_target)" ] || exit 1
   exit 0
 fi
-generation=$(read_file "$COORD/generation")
-printf '%s\n' "$generation" | grep -Eq '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' || exit 1
 phase=${1:-}
+if [ "$phase" != startup ]; then
+  generation=$(read_file "$COORD/generation")
+  printf '%s\n' "$generation" | grep -Eq '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' || exit 1
+fi
 case "$phase" in
 prepare|stopped|started|abort)
   [ "${KSU_RESTART_GENERATION:-}" = "$generation" ] || exit 1
@@ -159,33 +161,41 @@ started)
     *) exit 1 ;;
   esac
   ;;
-await|authorize)
-  [ ! -f "$COORD/busy" ] && [ -f "$COORD/ready" ] && allowed &&
-    [ "$generation" = "$(read_file "$HANDOFF/generation")" ] &&
-    [ "$(read_file "$HANDOFF/phase")" = verified ] &&
-    [ "${2:-}" = "$(read_file "$HANDOFF/old-target")" ] &&
-    [ "${2:-}" = "$(read_file "$MODDIR/session-open")" ] &&
-    [ "${2:-}" = "$(read_file "$MODDIR/injected-identity")" ] &&
-    [ ! -f "$MODDIR/failure" ] && [ ! -d "$STATE" ] &&
-    [ -z "$(pidof frida-inject)" ] && old_is_dead || exit 1
-  target=$(current_target)
-  [ "$target" = "$(read_file "$HANDOFF/new-target")" ] || exit 1
+startup|await|authorize)
+  if [ "$phase" = startup ]; then
+    target=${2:-}
+    valid_identity "$target" && allowed && [ ! -d "$STATE" ] &&
+      [ ! -f "$MODDIR/failure" ] && [ ! -f "$MODDIR/session-open" ] &&
+      [ -z "$(pidof frida-inject)" ] || exit 1
+  else
+    [ ! -f "$COORD/busy" ] && [ -f "$COORD/ready" ] && allowed &&
+      [ "$generation" = "$(read_file "$HANDOFF/generation")" ] &&
+      [ "$(read_file "$HANDOFF/phase")" = verified ] &&
+      [ "${2:-}" = "$(read_file "$HANDOFF/old-target")" ] &&
+      [ "${2:-}" = "$(read_file "$MODDIR/session-open")" ] &&
+      [ "${2:-}" = "$(read_file "$MODDIR/injected-identity")" ] &&
+      [ ! -f "$MODDIR/failure" ] && [ ! -d "$STATE" ] &&
+      [ -z "$(pidof frida-inject)" ] && old_is_dead || exit 1
+    target=$(current_target)
+    [ "$target" = "$(read_file "$HANDOFF/new-target")" ] || exit 1
+  fi
   ticks=$(getconf CLK_TCK) || exit 1
   case "$ticks" in ''|*[!0-9]*) exit 1 ;; esac
   [ "$ticks" -gt 0 ] && [ "$ticks" -le 1000000 ] || exit 1
   start=${target##*:}
   count=0
   while :; do
-    allowed && [ ! -f "$COORD/busy" ] && [ -f "$COORD/ready" ] &&
-      [ "$generation" = "$(read_file "$COORD/generation")" ] &&
-      [ "$target" = "$(current_target)" ] &&
-      [ "$(read_file "$HANDOFF/phase")" = verified ] || exit 1
+    allowed && [ ! -f "$COORD/busy" ] && [ "$target" = "$(current_target)" ] || exit 1
+    if [ "$phase" != startup ]; then
+      [ -f "$COORD/ready" ] && [ "$generation" = "$(read_file "$COORD/generation")" ] &&
+        [ "$(read_file "$HANDOFF/phase")" = verified ] || exit 1
+    fi
     age=$(awk -v ticks="$ticks" -v start="$start" 'NR == 1 { if ($1 ~ /^[0-9]+([.][0-9]+)?$/) printf "%.0f", $1 * ticks - start; else exit 1 }' /proc/uptime) || exit 1
     case "$age" in ''|*[!0-9]*) exit 1 ;; esac
     [ "$age" -ge "$((90 * ticks))" ] && break
-    [ "$phase" = await ] && [ "$count" -lt 100 ] || exit 1
+    [ "$phase" != authorize ] && [ "$count" -lt 100 ] || exit 1
     if [ "$count" -eq 0 ]; then
-      echo 'STARTUP_WAIT - preserving the handoff until SystemUI is at least 90 seconds old.' >&2
+      echo 'STARTUP_WAIT - waiting until SystemUI is at least 90 seconds old.' >&2
     fi
     sleep 1
     count=$((count + 1))
@@ -193,6 +203,8 @@ await|authorize)
   if [ "$phase" = authorize ]; then
     echo consumed > "$HANDOFF/phase"
     printf '%s\n' "$target"
+  elif [ "$phase" = startup ]; then
+    echo 'STARTUP_AGE_PASSED - SystemUI identity unchanged and at least 90 seconds old.' >&2
   else
     echo 'STARTUP_AGE_PASSED - process identity and restart generation unchanged.' >&2
   fi

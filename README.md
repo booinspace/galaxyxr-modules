@@ -34,9 +34,11 @@ The combined build includes [boundary alignment](docs/BOUNDARY-ALIGNMENT.md)
 by default. It uses the window's actual transform and keeps stock move events
 and resize input intact.
 
-The **0.1.27 candidate** also raises Home's pin limit to 50. It keeps the
+The **0.1.28 candidate** also raises Home's pin limit to 50. It keeps the
 five-column tiles and panel size, adding vertical scrolling above 10 apps.
 This addition needs a headset test; see the [Home pins guide](docs/HOME-PINS.md).
+The 90-second startup-age check now covers ordinary starts as well as planned
+restarts. A 0.1.26 crash occurred before that age; the native cause is unresolved.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |

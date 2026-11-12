@@ -23,9 +23,15 @@ undetermined. Extended idle/wake stability remains unverified.
 This is a **KernelSU GXR module ZIP**. It requires an active temporary root
 session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 
-The **0.1.27 candidate** adds [up to 50 Home pins](HOME-PINS.md), with the same
+The **0.1.28 candidate** adds [up to 50 Home pins](HOME-PINS.md), with the same
 five-column tiles and panel size. Scroll vertically above 10 pinned apps.
-This addition needs a headset test; the existing window features are retained.
+Installation was confirmed on the headset; pinning and scrolling beyond 10
+still need a headset test. The existing window features are retained.
+This build waits for a 90-second SystemUI process age before every attachment,
+including ordinary starts after a full reboot. Earlier builds applied that
+age gate only to planned restart resume. A 0.1.26 ART crash occurred at 33
+seconds of SystemUI uptime; applying the existing delay is a precaution, not
+proof of the underlying native cause or a complete crash fix.
 
 ## Install
 
@@ -46,7 +52,7 @@ This addition needs a headset test; the existing window features are retained.
    A window restored before the Borderless delay can keep its decorations.
    Reopening only its top menu does not recreate the window.
 
-The Home pin candidate is `gxr-window-curvature-0.1.27-azj2-disabled.zip`.
+The Home pin candidate is `gxr-window-curvature-0.1.28-azj2-disabled.zip`.
 Verify its checksum against the builder's `.sha256` sidecar before copying.
 Boundary alignment is included in the combined build. The tested 0.1.23
 artifact remains available in the repository as a checkpoint.
@@ -85,8 +91,9 @@ boot's diagnostics, acknowledges that old quarantine and starts once.
 If services have not started it, tap the combined module's **Action**. Action
 starts it when enabled and not already starting/running, waits up to 30 seconds
 for status, then exports logs. This start does not require a Soft restart.
-Action starts the runtime and opens settings. Allow the usual 45-second Borderless delay and recreate
-an app window afterward.
+Action starts the runtime and opens settings. Startup first waits until the
+SystemUI process is 90 seconds old, followed by the usual 45-second Borderless
+delay. Recreate an app window afterward.
 
 A crash still disables the module. After a full reboot, regain root, enable
 it and tap **Action**. The module never turns its own checkbox on. A Soft
@@ -302,7 +309,7 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.27-azj2-disabled.zip`
+The output is `gxr-window-curvature-0.1.28-azj2-disabled.zip`
 and its `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
