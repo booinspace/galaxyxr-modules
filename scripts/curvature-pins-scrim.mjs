@@ -7,8 +7,10 @@ extern int pin_clock_gettime(int clock, PinTimespec *time);
 extern void *pin_malloc(unsigned long size);
 extern gpointer deadline;
 extern gpointer input_deadline;
+extern gpointer hand_deadline;
 extern gint snapshots;
 extern gint routed;
+extern gint hands_hidden;
 extern gint scrim_frames;
 extern gint scrim_suppressed;
 extern gpointer scrim_alpha_total;
@@ -20,6 +22,10 @@ void arm(gpointer next) {
 void arm_input(gpointer next) {
     gssize previous = g_atomic_pointer_add(&input_deadline, 0);
     g_atomic_pointer_add(&input_deadline, (gssize) next - previous);
+}
+void arm_hands(gpointer next) {
+    gssize previous = g_atomic_pointer_add(&hand_deadline, 0);
+    g_atomic_pointer_add(&hand_deadline, (gssize) next - previous);
 }
 static gboolean live(gpointer *slot) {
     gint64 until = (gint64) g_atomic_pointer_add(slot, 0);
@@ -42,6 +48,14 @@ void scrim_enter(GumInvocationContext *context) {
     // The fullscreen mesh is separate from the CPM layer's ScrimConfig.
     context->cpu_context->v[0].s = 0.0f;
 }
+void hand_enter(GumInvocationContext *context) {
+    if (!live(&hand_deadline) || live(&input_deadline)) return;
+    gssize mode = (gssize) gum_invocation_context_get_nth_argument(context, 1);
+    if (mode < 0 || mode > 5) return;
+    // AZJ2's draw-mode table defines zero as NONE; tracking stays active.
+    gum_invocation_context_replace_nth_argument(context, 1, NULL);
+    if (mode != 0) g_atomic_int_add(&hands_hidden, 1);
+}
 void input_leave(GumInvocationContext *context) {
     if (!live(&deadline) || !live(&input_deadline)) return;
     const guint8 *source = gum_invocation_context_get_return_value(context);
@@ -60,6 +74,7 @@ void input_leave(GumInvocationContext *context) {
     g_atomic_int_add(&routed, 1);
 }
 gint get_routed(void) { return g_atomic_int_add(&routed, 0); }
+gint get_hands_hidden(void) { return g_atomic_int_add(&hands_hidden, 0); }
 gint get_scrim_frames(void) { return g_atomic_int_add(&scrim_frames, 0); }
 gint get_scrim_suppressed(void) { return g_atomic_int_add(&scrim_suppressed, 0); }
 gint get_scrim_alpha(void) {
@@ -80,6 +95,8 @@ export function installPinnedScrim(nowMs) {
             [0xd503245f, 0x9100e000, 0xd65f03c0], {onLeave: 'input_leave'}],
         ['_ZN12spaceflinger5Scrim8SetAlphaEf', 0x4e2c990,
             [0xd503233f, 0xd10603ff, 0xfd0093ec, 0x6d132beb], {onEnter: 'scrim_enter'}],
+        ['_ZN2ix6moohan5sysui12HandRenderer11SetDrawModeENS1_17HandRendererState8DrawModeE', 0x4e96a54,
+            [0xd503233f, 0xd10583ff, 0xa9127bfd, 0xa9135ffc], {onEnter: 'hand_enter'}],
     ].map(([symbol, offset, words, callbacks]) => {
         const address = backend.getExportByName(symbol);
         if (!address.equals(backend.base.add(offset)) || words.some((word, i) => address.add(i * 4).readU32() !== word)) {
@@ -89,19 +106,25 @@ export function installPinnedScrim(nowMs) {
     });
     const deadline = Memory.alloc(Process.pointerSize);
     deadline.writePointer(ptr(0));
-    const inputState = Memory.alloc(16);
+    const inputState = Memory.alloc(20);
     inputState.writePointer(ptr(0));
     inputState.add(8).writeS32(0); inputState.add(12).writeS32(0);
+    inputState.add(16).writeS32(0);
+    const handDeadline = Memory.alloc(Process.pointerSize);
+    handDeadline.writePointer(ptr(0));
     const scrimState = Memory.alloc(16);
     scrimState.writeS32(0); scrimState.add(4).writeS32(0); scrimState.add(8).writePointer(ptr(0));
     const module = new CModule(PIN_SCRIM_SOURCE, {deadline,
         input_deadline: inputState, snapshots: inputState.add(8), routed: inputState.add(12),
+        hand_deadline: handDeadline, hands_hidden: inputState.add(16),
         scrim_frames: scrimState, scrim_suppressed: scrimState.add(4), scrim_alpha_total: scrimState.add(8),
         pin_malloc: Module.getGlobalExportByName('malloc'),
         pin_clock_gettime: Module.getGlobalExportByName('clock_gettime')});
     const arm = new NativeFunction(module.arm, 'void', ['pointer']);
     const armInput = new NativeFunction(module.arm_input, 'void', ['pointer']);
+    const armHands = new NativeFunction(module.arm_hands, 'void', ['pointer']);
     const routed = new NativeFunction(module.get_routed, 'int', []);
+    const hiddenHands = new NativeFunction(module.get_hands_hidden, 'int', []);
     const scrimFrames = new NativeFunction(module.get_scrim_frames, 'int', []);
     const scrimSuppressed = new NativeFunction(module.get_scrim_suppressed, 'int', []);
     const scrimAlpha = new NativeFunction(module.get_scrim_alpha, 'int', []);
@@ -112,7 +135,8 @@ export function installPinnedScrim(nowMs) {
             Object.fromEntries(Object.entries(target.callbacks).map(([phase, name]) => [phase, module[name]]))));
     } catch (error) {
         try { arm(ptr(0)); }
-        finally { try { armInput(ptr(0)); } finally { for (const hook of hooks) hook.detach(); } }
+        finally { try { armInput(ptr(0)); }
+            finally { try { armHands(ptr(0)); } finally { for (const hook of hooks) hook.detach(); } } }
         throw error;
     }
     return {
@@ -120,6 +144,7 @@ export function installPinnedScrim(nowMs) {
         nativeModule: module,
         deadline,
         inputState,
+        handDeadline,
         scrimState,
         setAllowed(allowed) {
             if (stopped) return;
@@ -129,13 +154,18 @@ export function installPinnedScrim(nowMs) {
         setInputAllowed(allowed) {
             if (!stopped) armInput(ptr(allowed ? Math.floor(nowMs() + 1000) : 0));
         },
+        setHandsHidden(hidden) {
+            if (!stopped) armHands(ptr(hidden ? Math.floor(nowMs() + 1000) : 0));
+        },
         getInputRouting: () => stopped ? 0 : routed(),
-        getScrimDiagnostics: () => ({frames: scrimFrames(), suppressed: scrimSuppressed(), meanAlpha: scrimAlpha() / 1000}),
+        getScrimDiagnostics: () => ({frames: scrimFrames(), suppressed: scrimSuppressed(),
+            meanAlpha: scrimAlpha() / 1000, hiddenHands: hiddenHands()}),
         stop() {
             if (stopped) return;
             stopped = true;
             try { arm(ptr(0)); }
-            finally { try { armInput(ptr(0)); } finally { for (const hook of hooks) hook.detach(); } }
+            finally { try { armInput(ptr(0)); }
+                finally { try { armHands(ptr(0)); } finally { for (const hook of hooks) hook.detach(); } } }
         },
     };
 }

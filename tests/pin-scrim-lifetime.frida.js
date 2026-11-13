@@ -11,9 +11,10 @@ function observedCModule(source, symbols) {
     Script.bindWeak(value, collectedModule);
     return value;
 }
-const code = Memory.alloc(0x80000);
-Memory.protect(code, 0x80000, 'rwx');
-const offsets = [0x4e28710, 0x4e18e10, 0x4dbadac, 0x4e2c990], low = Math.min(...offsets);
+const offsets = [0x4e28710, 0x4e18e10, 0x4dbadac, 0x4e2c990, 0x4e96a54], low = Math.min(...offsets);
+const codeSize = Math.ceil((Math.max(...offsets) - low + 128) / Process.pageSize) * Process.pageSize;
+const code = Memory.alloc(codeSize);
+Memory.protect(code, codeSize, 'rwx');
 for (const offset of offsets.slice(0, 3)) {
     const entry = code.add(offset - low);
     [0xd503245f, offset === offsets[2] ? 0x9100e000 : 0xbd004400,
@@ -24,8 +25,11 @@ for (const offset of offsets.slice(0, 3)) {
 [0xd503233f, 0xd10603ff, 0xfd0093ec, 0x6d132beb, 0xbd007c00,
     0x6d532beb, 0xfd4093ec, 0x910603ff, 0xd50323bf, 0xd65f03c0]
     .forEach((word, i) => code.add(offsets[3] - low + i * 4).writeU32(word));
+[0xd503233f, 0xd10583ff, 0xa9127bfd, 0xa9135ffc, 0xb9089c01,
+    0xa9535ffc, 0xa9527bfd, 0x910583ff, 0xd50323bf, 0xd65f03c0]
+    .forEach((word, i) => code.add(offsets[4] - low + i * 4).writeU32(word));
 const backend = {base: code.sub(low), getExportByName(symbol) {
-    return code.add(offsets[symbol.includes('SystemInputInfoStore') ? 2 : symbol.includes('5Scrim') ? 3 : symbol.includes('MultiSurface') ? 1 : 0] - low);
+    return code.add(offsets[symbol.includes('HandRenderer') ? 4 : symbol.includes('SystemInputInfoStore') ? 2 : symbol.includes('5Scrim') ? 3 : symbol.includes('MultiSurface') ? 1 : 0] - low);
 }};
 const processDouble = {arch: Process.arch, pointerSize: Process.pointerSize,
     getModuleByName(name) {
@@ -45,6 +49,14 @@ function now() {
 const receiver = Memory.alloc(0x90);
 const setters = offsets.slice(0, 2).map(offset => new NativeFunction(code.add(offset - low), 'void', ['pointer', 'float']));
 const setFullscreenAlpha = new NativeFunction(code.add(offsets[3] - low), 'void', ['pointer', 'float']);
+const hand = Memory.alloc(0x900);
+const setHandMode = new NativeFunction(code.add(offsets[4] - low), 'void', ['pointer', 'int']);
+function checkHand(expected) {
+    hand.add(0x898).writeU32(0x12345678); hand.add(0x8a0).writeU32(0x87654321);
+    setHandMode(hand, 5);
+    if (hand.add(0x89c).readU32() !== expected || hand.add(0x898).readU32() !== 0x12345678 ||
+            hand.add(0x8a0).readU32() !== 0x87654321) throw new Error('Wrong hand draw mode or adjacent state');
+}
 const store = Memory.alloc(0x90), originalInfo = store.add(0x38);
 originalInfo.writeByteArray(new Uint8Array(0x54).fill(0x5a));
 originalInfo.add(0x38).writeU8(1);
@@ -94,22 +106,23 @@ function step() {
                 return;
             }
             if (collected !== 0) throw new Error('Live controller lost its code owner');
-            hook.setAllowed(true); checkAlpha(1);
-            hook.setInputAllowed(true); checkInput(true);
-            hook.setInputAllowed(false); checkInput(false);
+            hook.setAllowed(true); hook.setHandsHidden(true); checkAlpha(1);
+            hook.setInputAllowed(true); checkInput(true); checkHand(5);
+            hook.setInputAllowed(false); checkInput(false); checkHand(0);
             const diagnostics = hook.getScrimDiagnostics();
-            if (diagnostics.frames < 1 || diagnostics.suppressed < 1 || Math.abs(diagnostics.meanAlpha - .2) > .001) {
+            if (diagnostics.frames < 1 || diagnostics.suppressed < 1 || diagnostics.hiddenHands < 1 || Math.abs(diagnostics.meanAlpha - .2) > .001) {
                 throw new Error('Missing fullscreen scrim diagnostics');
             }
-            hook.setAllowed(false); checkAlpha(.3);
+            hook.setAllowed(false); hook.setHandsHidden(false); checkAlpha(.3); checkHand(5);
             checkInput(false);
             if (++cycles < 20) { step(); return; }
             hook.setAllowed(true);
+            hook.setHandsHidden(true);
             hook.setInputAllowed(true);
             setTimeout(() => {
                 try {
-                    gc(); checkAlpha(.3); checkInput(false);
-                    hook.stop(); Interceptor.flush(); checkAlpha(.3); checkInput(false);
+                    gc(); checkAlpha(.3); checkInput(false); checkHand(5);
+                    hook.stop(); Interceptor.flush(); checkAlpha(.3); checkInput(false); checkHand(5);
                     hook = null;
                     gc();
                     setTimeout(() => {

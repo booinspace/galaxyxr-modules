@@ -7,7 +7,9 @@ adds the caption controls and fades the panel using eye tracking.
 
 This is an opt-in feature in the combined KernelSU GXR module, not a separate
 injector or a modified Symphonium APK. Existing window features use their normal
-startup path. The additional hooks are requested only after **Pin app** is used.
+startup path. Version 0.1.60 observes runtime visibility at startup so hand
+outlines can be hidden before a pin is opened. Eye-input sampling starts only
+when a marked pin exists.
 
 **Status:** 0.1.54 is device-confirmed for ordinary wrist rotation without opening
 a menu, rapid menu dismissal and a second pin after returning from Steam Link.
@@ -223,6 +225,42 @@ records 3,784 suppressed positive-alpha fullscreen-scrim frames, with mean
 requested alpha 0.232. The module remained running without a fatal error or
 shutdown through the exported test. Extended idle/wake and other immersive
 applications have not been retested.
+
+## Android focus and hand outlines
+
+After interacting with a pin in 0.1.57, Steam Link could remain visible while
+the pin kept Android task focus. A live capture showed Symphonium focused,
+Steam Link visible in full-space mode, and XR focus assigned to SystemUI.
+The user could restore controller input by selecting Steam Link in Recents.
+This is separate from the module's existing pointer eligibility and scrim
+override, which remained active in the export.
+
+Version 0.1.60 checks the caption organizer's current task list on its owner
+handler. While only owned pins are visible over immersive content, a focused
+owned pin returns Android focus to the unique visible primary-user immersive
+task through `IActivityTaskManager.setFocusedTask`. It does not relaunch the app
+or change window order. No focused pin, hidden tasks, another user, ambiguous
+immersive tasks, foreign overlays, system UI, keyguard or an expired supervisor
+lease cause no focus transfer. Successful transfers are limited to one per
+second and reported as `androidFocusReturns` and `androidFocusTarget`.
+
+The same version uses AZJ2's `HandRenderer::SetDrawMode` to hide system hand
+outlines in immersive view. The stock `Hand::Update` calls this setter each
+frame; its verified enum defines `NONE` as zero. A separate one-second lease
+covers pure immersive view as well as owned pins over it. Looking at or holding
+a pin keeps the stock draw mode, and looking away suppresses the outlines.
+System UI, keyguard, foreign overlays, lease expiry and teardown restore stock
+calls. The hand pose and gesture streams keep running. This affects SystemUI's
+outline renderer, not hands drawn by an immersive app or the separate
+passthrough hand-breakthrough setting. Diagnostics include `hiddenHands`.
+
+Host tests cover focus selection/debounce and hand lease expiry, invalid modes,
+clock failure, cleanup and native-owner retention. The ARM64 fixture passed
+20 forced-GC cycles on the Mac using the real native CModule and private setter
+clones, with an adapter for the host's monotonic-clock ID. Read-only checks of
+the real AZJ2 interfaces also passed on the headset. The user then confirmed
+controller recovery and attention-controlled hand outlines working in 0.1.60.
+Extended idle/wake and other immersive apps have not been retested.
 
 ## Use
 

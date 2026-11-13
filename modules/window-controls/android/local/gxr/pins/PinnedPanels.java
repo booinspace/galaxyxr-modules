@@ -11,6 +11,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,6 +46,9 @@ public final class PinnedPanels {
     private volatile boolean inputOverride;
     private volatile boolean pinnedInput;
     private long lastInputOverride;
+    private long lastFocusReturn = -1000;
+    private int focusReturns;
+    private int focusTarget = -1;
     private final Runnable runtimeWatchdog = new Runnable() {
         @Override public void run() {
             if (stopping) return;
@@ -144,6 +148,32 @@ public final class PinnedPanels {
             inputOverride = true;
             lastInputOverride = now;
         }
+        returnImmersiveFocus(now);
+    }
+    private void returnImmersiveFocus(long now) throws Exception {
+        if (captionOwner == null || now - lastFocusReturn < 1000) return;
+        Object organizer = field(captionOwner, "taskOrganizer");
+        List<?> tasks = (List<?>) call(organizer, "getRunningTasks", new Class<?>[] {int.class}, 0);
+        if (tasks.size() > 128) return;
+        boolean pinFocused = false;
+        int immersive = -1;
+        for (Object info : tasks) {
+            if (info.getClass().getField("userId").getInt(info) != 0 || !isTaskVisible(info)) continue;
+            int id = info.getClass().getField("taskId").getInt(info);
+            if (info.getClass().getField("isFocused").getBoolean(info) && panels.containsKey(id)) pinFocused = true;
+            int mode = info.getClass().getField("xrDesktopMode").getInt(info);
+            if (mode == 2 || mode == 3) {
+                if (immersive != -1) return;
+                immersive = id;
+            }
+        }
+        if (!pinFocused || immersive <= 0) return;
+        // Pointer events still target the pin; Android/XR controller focus belongs to the immersive app.
+        Object service = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
+        call(service, "setFocusedTask", new Class<?>[] {int.class}, immersive);
+        lastFocusReturn = now;
+        focusTarget = immersive;
+        focusReturns++;
     }
     private static void setSystemOverlay(boolean visible) throws Exception {
         Class.forName("android.graphics.CPM").getMethod("notifySystemOverlayStateChanged", boolean.class)
@@ -255,7 +285,8 @@ public final class PinnedPanels {
     public String getRuntimeStatus() {
         return "runtimeFlags=" + runtimeFlags + ",backdrop=" + transparentBackdrop +
                 ",inputOverride=" + inputOverride + ",focus=" + (inputOverride ? "vr" : "stock") +
-                ",pinPointer=" + (inputOverride && pinnedInput);
+                ",pinPointer=" + (inputOverride && pinnedInput) +
+                ",androidFocusReturns=" + focusReturns + ",androidFocusTarget=" + focusTarget;
     }
     public boolean isBackdropOverridden() { return transparentBackdrop && inputOverride; }
     public boolean wantsPinPointer() { return inputOverride && pinnedInput; }

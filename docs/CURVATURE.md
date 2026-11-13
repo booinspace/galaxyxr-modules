@@ -193,7 +193,16 @@ Shell regression checks exercise injection at a simulated age of 0.01 seconds
 and one-use restart authorization with the age delay removed, including rejection
 of busy, unready, changed-generation, wrong-target, disabled and quarantined
 states. They also retain the 90-second wait/cancellation tests. These checks do
-not reproduce ART initialization on the headset; early device startup is unverified.
+not reproduce ART initialization on the headset.
+
+The first 0.1.57 headset trial passed: before Action was opened, the automatic
+RUNNING report matched the live boot, PID and process start time. Its timestamp
+was approximately 43 seconds after SystemUI started, and the user confirmed
+curvature, wrist rotation and borderless controls. A fresh export contained no
+fatal error or shutdown. This is one Soft restart trial, not a cold-boot or
+repeated-start stability result. Version 0.1.60 keeps the same zero-age startup
+and adds the [pin-focus and hand-outline changes](IMMERSIVE-PINS.md#android-focus-and-hand-outlines),
+which the user subsequently confirmed working on AZJ2.
 
 ## Feature settings and wrist grabs
 
@@ -381,9 +390,11 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The confirmed-build output is `gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip`.
+The current builder produces `gxr-window-curvature-0.1.59-azj2-startup-test-disabled.zip`.
 Adding `--no-startup-age` produces the separate
-`gxr-window-curvature-0.1.57-azj2-no-age-test-disabled.zip`.
+`gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip`.
+These include the pin-focus and hand-outline changes confirmed with 0.1.60.
+The earlier 0.1.56 and startup-tested 0.1.57 ZIPs remain in `releases/`.
 Both have a `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit

@@ -153,9 +153,13 @@ export function installImmersivePins(Java, factory, permitted, nowMs) {
             },
         });
         if (rayTimer === null) rayTimer = setInterval(() => {
-            if (!active() || latestRay === null || records.size === 0) return;
+            if (!active() || records.size === 0) return;
             Java.perform(() => {
-                try { controller.setRay(Java.array('float', latestRay), Math.floor(lastSample), latestPinching); }
+                try {
+                    if (latestRay !== null) controller.setRay(Java.array('float', latestRay), Math.floor(lastSample), latestPinching);
+                    if (scrim !== null) scrim.setInputAllowed(runtimeFlags === 6 &&
+                        controller.isBackdropOverridden() && controller.wantsPinPointer());
+                }
                 catch (error) { fail(error); }
             });
         }, 33);
@@ -163,7 +167,10 @@ export function installImmersivePins(Java, factory, permitted, nowMs) {
     try {
         runtimeVisibility.implementation = function (sysui, overlay, immersive, keyguard) {
             runtimeFlags = (sysui ? 1 : 0) | (overlay ? 2 : 0) | (immersive ? 4 : 0) | (keyguard ? 8 : 0);
-            if (scrim !== null && runtimeFlags !== 6) scrim.setAllowed(false);
+            if (scrim !== null) {
+                if (runtimeFlags !== 6) scrim.setAllowed(false);
+                if (runtimeFlags !== 4 && runtimeFlags !== 6) scrim.setHandsHidden(false);
+            }
             const result = runtimeVisibility.call(this, sysui, overlay, immersive, keyguard);
             try { controller.setRuntimeState(!!sysui, !!overlay, !!immersive, !!keyguard, !!result); }
             catch (error) { fail(error); }
@@ -258,11 +265,12 @@ export function installImmersivePins(Java, factory, permitted, nowMs) {
         pulse() {
             if (!active()) return;
             controller.pulse(true);
-            if (records.size > 0 && scrim === null) scrim = installPinnedScrim(nowMs);
+            if ((records.size > 0 || runtimeFlags === 4) && scrim === null) scrim = installPinnedScrim(nowMs);
             if (scrim !== null) {
                 const allowed = records.size > 0 && runtimeFlags === 6 && controller.isBackdropOverridden();
                 scrim.setAllowed(allowed);
                 scrim.setInputAllowed(allowed && controller.wantsPinPointer());
+                scrim.setHandsHidden(runtimeFlags === 4 || allowed);
             }
             const status = String(controller.getRuntimeStatus());
             if (status !== lastRuntime) {

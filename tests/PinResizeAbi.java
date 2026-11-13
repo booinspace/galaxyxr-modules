@@ -11,9 +11,13 @@ public final class PinResizeAbi {
     }
     public static void main(String[] args) throws Exception {
         Class<?> director = type("com.android.wm.shell.windowdecor.XrCaptionWindowDecorDirector");
-        for (String field : new String[] {"mainHandler", "context", "coroutineScope", "taskOperations"}) director.getDeclaredField(field);
+        for (String field : new String[] {"mainHandler", "context", "coroutineScope", "taskOperations", "taskOrganizer"}) director.getDeclaredField(field);
+        director.getDeclaredField("taskOrganizer").getType().getMethod("getRunningTasks", int.class);
+        type("android.app.ActivityTaskManager").getMethod("getService");
+        type("android.app.IActivityTaskManager").getMethod("setFocusedTask", int.class);
         Class<?> info = type("android.app.ActivityManager$RunningTaskInfo");
-        for (String field : new String[] {"configuration", "token", "minWidth", "minHeight", "defaultMinSize", "isResizeable"}) info.getField(field);
+        for (String field : new String[] {"configuration", "token", "minWidth", "minHeight", "defaultMinSize", "isResizeable",
+                "taskId", "userId", "xrDesktopMode", "isFocused", "isVisible", "isVisibleRequested"}) info.getField(field);
         Class<?> dp = type("com.android.systemui.xr.ui.unit.Dp"); dp.getConstructor(float.class);
         Class<?> metrics = type("com.android.systemui.xr.ui.DisplayMetrics");
         metrics.getMethod("toPx", dp); metrics.getMethod("getDpToMeter", int.class); metrics.getMethod("getPixelsPerMeter");

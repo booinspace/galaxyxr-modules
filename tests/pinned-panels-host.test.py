@@ -14,6 +14,16 @@ SOURCES["android/os/Looper.java"] = SOURCES["android/os/Looper.java"].replace(
 SOURCES["android/graphics/CPM.java"] = SOURCES["android/graphics/CPM.java"].replace(
     "public void apply()", "public void setAlpha(Node node, float value) { }\n        public void apply()")
 SOURCES.update({
+    "android/app/ActivityTaskManager.java": """package android.app;
+public final class ActivityTaskManager {
+    public static final Service SERVICE = new Service();
+    public static Service getService() { return SERVICE; }
+    public static final class Service {
+        public int calls, target = -1;
+        public void setFocusedTask(int id) { calls++; target = id; }
+    }
+}
+""",
     "android/app/ActivityManager.java": "package android.app; public class ActivityManager { public static class RunningTaskInfo { } }",
     "android/content/Context.java": "package android.content; public class Context { }",
     "android/window/WindowContainerToken.java": "package android.window; public class WindowContainerToken { }",
@@ -146,6 +156,8 @@ public final class PinnedPanelsTest {
     public static final class Config { public final WindowConfig windowConfiguration = new WindowConfig(); }
     public static final class Info {
         public boolean isVisible = true, isVisibleRequested = true, isResizeable = true;
+        public boolean isFocused;
+        public int taskId = 42, userId, xrDesktopMode = 4;
         public int minWidth = 300, minHeight = 200, defaultMinSize = 100;
         public final Config configuration = new Config(); public final WindowContainerToken token = new WindowContainerToken();
     }
@@ -160,7 +172,12 @@ public final class PinnedPanelsTest {
     public static final class Director {
         final Handler mainHandler = new Handler(Looper.myLooper()); final Context context = new Context();
         final Operations taskOperations = new Operations();
+        final Organizer taskOrganizer = new Organizer();
         final CoroutineScope coroutineScope = CoroutineScopeKt.CoroutineScope(Dispatchers.getUnconfined());
+    }
+    public static final class Organizer {
+        public final ArrayList<Info> tasks = new ArrayList<>();
+        public ArrayList<Info> getRunningTasks(int display) { check(display == 0); return tasks; }
     }
     private static void check(boolean value) { if (!value) throw new AssertionError(); }
     private static Size receive(Channel<Size> channel) throws Exception {
@@ -175,6 +192,28 @@ public final class PinnedPanelsTest {
         PinnedPanels panels = new PinnedPanels(); panels.bindCaptionOwner(director);
         panels.pulse(true); panels.add(42, subspace, info); Handler.runDue();
         check(panels.getError().isEmpty());
+        java.lang.reflect.Method focus = PinnedPanels.class.getDeclaredMethod("returnImmersiveFocus", long.class);
+        focus.setAccessible(true);
+        Info vr = new Info(); vr.taskId = 84; vr.xrDesktopMode = 3;
+        director.taskOrganizer.tasks.add(info); director.taskOrganizer.tasks.add(vr);
+        android.app.ActivityTaskManager.Service activity = android.app.ActivityTaskManager.SERVICE;
+        focus.invoke(panels, 0L); check(activity.calls == 0);
+        info.isFocused = true;
+        focus.invoke(panels, 0L); check(activity.calls == 1 && activity.target == 84);
+        focus.invoke(panels, 1L); check(activity.calls == 1);
+        info.isFocused = false; focus.invoke(panels, 1000L); check(activity.calls == 1);
+        info.isFocused = true; vr.isVisible = false;
+        focus.invoke(panels, 1000L); check(activity.calls == 1);
+        vr.isVisible = true; vr.userId = 10;
+        focus.invoke(panels, 1000L); check(activity.calls == 1);
+        vr.userId = 0;
+        Info otherVr = new Info(); otherVr.taskId = 85; otherVr.xrDesktopMode = 2;
+        director.taskOrganizer.tasks.add(otherVr);
+        focus.invoke(panels, 1000L); check(activity.calls == 1);
+        director.taskOrganizer.tasks.remove(otherVr);
+        info.taskId = 99; focus.invoke(panels, 1000L); check(activity.calls == 1);
+        info.taskId = 42; focus.invoke(panels, 1000L); check(activity.calls == 2 && activity.target == 84);
+        info.isFocused = false;
         Transform transform = subspace.graph.transform;
         check(Boolean.TRUE.equals(transform.last[0]) && Boolean.TRUE.equals(transform.last[1]));
         check(transform.reformSizes.minWidth == .3f && transform.reformSizes.minHeight == .2f);

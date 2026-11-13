@@ -8,8 +8,8 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.56](releases/gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip)
-and its [checksum](releases/gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip.sha256).
+Download [Window Controls 0.1.60](releases/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip)
+and its [checksum](releases/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip.sha256).
 Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
 
@@ -119,8 +119,17 @@ curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
 The confirmed package is `gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip`.
 The separate 0.1.57 experiment removes the fixed age delay while retaining
-readiness, firmware, identity and quarantine checks. Early startup still needs
-headset testing; see the [startup experiment](docs/CURVATURE.md#zero-age-startup-experiment).
+readiness, firmware, identity and quarantine checks. Its automatic RUNNING report
+matched the new live SystemUI before Action, at approximately 43 seconds of
+process age, and the user confirmed working window controls. Cold-boot and
+repeated early-start stability remain unverified; see the
+[startup experiment](docs/CURVATURE.md#zero-age-startup-experiment).
+
+Version 0.1.60 retains that startup path and addresses Android focus staying
+on a pin after interaction. It returns focus to the unique visible immersive
+task while retaining the pin's pointer path. It also hides system hand outlines
+in immersive view until a pin needs interaction. The user confirmed both fixes
+working on AZJ2. See [pin focus and hands](docs/IMMERSIVE-PINS.md#android-focus-and-hand-outlines).
 The build includes an ART/CMC bridge patch and checks the exact ART library hash before
 attachment.
 Recovery is built in: after a cold boot, module startup preserves diagnostics

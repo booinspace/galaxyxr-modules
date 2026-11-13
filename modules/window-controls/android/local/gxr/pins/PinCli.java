@@ -157,6 +157,8 @@ public final class PinCli {
                 Class<?> receiver = Class.forName("android.graphics.CPM$HitTestResultReceiver");
                 Class.forName("android.graphics.CPM").getMethod("hitTest", node, vec, vec, receiver, int.class);
                 Class.forName("android.graphics.CPM").getMethod("notifySystemOverlayStateChanged", boolean.class);
+                Class.forName("android.app.ActivityTaskManager").getMethod("getService");
+                Class.forName("android.app.IActivityTaskManager").getMethod("setFocusedTask", int.class);
                 Class<?> metadata = Class.forName("android.graphics.CPM$SysUIMetadata");
                 Class<?> scrim = Class.forName("android.graphics.CPM$SysUIMetadata$ScrimConfig");
                 Class.forName("android.graphics.CPM$NodeUpdates").getMethod("setSysUIMetadata", node, metadata);

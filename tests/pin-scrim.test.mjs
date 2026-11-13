@@ -23,9 +23,12 @@ static gint g_atomic_int_add(gint *slot, gint value) { return __atomic_fetch_add
         writeFileSync(join(directory, 'gum/guminterceptor.h'), `#include <stddef.h>
 typedef union { unsigned char q[16]; double d; float s; } GumArm64VectorReg;
 typedef struct { GumArm64VectorReg v[32]; } GumCpuContext;
-typedef struct { void *renderer; void *returned; void *copy; GumCpuContext *cpu_context; } GumInvocationContext;
+typedef struct { void *renderer; void *returned; void *copy; GumCpuContext *cpu_context; void *mode; } GumInvocationContext;
 static void *gum_invocation_context_get_nth_argument(GumInvocationContext *context, unsigned n) {
- return n == 0 ? context->renderer : 0;
+ return n == 0 ? context->renderer : n == 1 ? context->mode : 0;
+}
+static void gum_invocation_context_replace_nth_argument(GumInvocationContext *context, unsigned n, void *value) {
+ if (n == 1) context->mode = value;
 }
 static void *gum_invocation_context_get_return_value(GumInvocationContext *context) { return context->returned; }
 static void gum_invocation_context_replace_return_value(GumInvocationContext *context, void *value) { context->returned = value; }
@@ -38,8 +41,8 @@ static void *gum_invocation_context_get_listener_thread_data(GumInvocationContex
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-gpointer deadline, input_deadline;
-gint snapshots, routed;
+gpointer deadline, input_deadline, hand_deadline;
+gint snapshots, routed, hands_hidden;
 gint scrim_frames, scrim_suppressed;
 gpointer scrim_alpha_total;
 static long now = 100, clock_failure;
@@ -59,6 +62,16 @@ int pin_clock_gettime(int clock, PinTimespec *time) {
  return clock_failure;
 }
 int main(void) {
+ GumInvocationContext hand = {.mode = (void *) 5};
+ hand_enter(&hand); assert(hand.mode == (void *) 5);
+ arm_hands((gpointer) 1100); hand_enter(&hand); assert(hand.mode == NULL && get_hands_hidden() == 1);
+ arm_input((gpointer) 1100); hand.mode = (void *) 2;
+ hand_enter(&hand); assert(hand.mode == (void *) 2);
+ arm_input(0); hand_enter(&hand); assert(hand.mode == NULL && get_hands_hidden() == 2);
+ hand.mode = (void *) 6; hand_enter(&hand); assert(hand.mode == (void *) 6);
+ now = 1100; hand.mode = (void *) 2; hand_enter(&hand); assert(hand.mode == (void *) 2);
+ now = 100; clock_failure = 1; hand_enter(&hand); assert(hand.mode == (void *) 2);
+ clock_failure = 0; arm_hands(0); hand_enter(&hand); assert(hand.mode == (void *) 2); arm(0);
  GumCpuContext cpu; memset(&cpu, 0x5a, sizeof cpu);
  GumInvocationContext scrim = {.cpu_context = &cpu};
  cpu.v[0].s = .2f; scrim_enter(&scrim); assert(cpu.v[0].s == .2f);
@@ -136,29 +149,32 @@ test('setter hooks reject changed code and stop on failed installation or lost s
             return mismatch && index === 1 ? 0 : words.get(offset)[index];
         }
     }
-    const offsets = [0x4e28710, 0x4e18e10, 0x4dbadac, 0x4e2c990];
-    const words = new Map(offsets.map((offset, i) => [offset, i === 3 ?
+    const offsets = [0x4e28710, 0x4e18e10, 0x4dbadac, 0x4e2c990, 0x4e96a54];
+    const words = new Map(offsets.map((offset, i) => [offset, i === 4 ?
+        [0xd503233f, 0xd10583ff, 0xa9127bfd, 0xa9135ffc] : i === 3 ?
         [0xd503233f, 0xd10603ff, 0xfd0093ec, 0x6d132beb] :
         [0xd503245f, i === 2 ? 0x9100e000 : 0xbd004400, 0xd65f03c0]]));
     try {
         globalThis.ptr = value => new Pointer(Number(value));
         globalThis.Process = {arch: 'arm64', pointerSize: 8, getModuleByName: () => ({base: ptr(0),
-            getExportByName: symbol => ptr(offsets[symbol.includes('SystemInputInfoStore') ? 2 : symbol.includes('5Scrim') ? 3 : symbol.includes('MultiSurface') ? 1 : 0])})};
+            getExportByName: symbol => ptr(offsets[symbol.includes('HandRenderer') ? 4 : symbol.includes('SystemInputInfoStore') ? 2 : symbol.includes('5Scrim') ? 3 : symbol.includes('MultiSurface') ? 1 : 0])})};
         globalThis.Memory = {alloc: () => ptr(0)};
         globalThis.Module = {getGlobalExportByName: () => ptr(0)};
         globalThis.CModule = class { constructor() {
             this.arm = ptr(1); this.on_leave = ptr(2); this.arm_input = ptr(3); this.get_routed = ptr(4); this.input_leave = ptr(5);
             this.scrim_enter = ptr(6); this.get_scrim_frames = ptr(7);
             this.get_scrim_suppressed = ptr(8); this.get_scrim_alpha = ptr(9);
+            this.hand_enter = ptr(10); this.get_hands_hidden = ptr(11);
+            this.arm_hands = ptr(12);
         } };
         globalThis.NativeFunction = function (target) { return value => {
-            if ([4, 7, 8, 9].includes(target.value)) return 0;
+            if ([4, 7, 8, 9, 11].includes(target.value)) return 0;
             if (failArm) throw new Error('fixture native arm failure');
             armed.push(value.value);
         }; };
         globalThis.Interceptor = {attach(target, callbacks) {
             if (failAttach && attached.length === 1) throw new Error('fixture attach failure');
-            assert.deepEqual(Object.keys(callbacks), [target.value === offsets[3] ? 'onEnter' : 'onLeave']);
+            assert.deepEqual(Object.keys(callbacks), [target.value >= offsets[3] ? 'onEnter' : 'onLeave']);
             attached.push(target.value); return {detach: () => detached.push(target.value)};
         }};
         mismatch = true;
@@ -169,13 +185,16 @@ test('setter hooks reject changed code and stop on failed installation or lost s
         assert.ok(hook.nativeModule instanceof globalThis.CModule, 'controller must own its executable code');
         assert.ok(hook.deadline instanceof Pointer, 'controller must own its imported mutable storage');
         assert.ok(hook.inputState instanceof Pointer, 'controller must own the writable input state');
+        assert.ok(hook.handDeadline instanceof Pointer, 'controller must own the writable hand lease');
         assert.ok(hook.scrimState instanceof Pointer, 'controller must own the writable brightness counters');
-        assert.deepEqual(hook.getScrimDiagnostics(), {frames: 0, suppressed: 0, meanAlpha: 0});
+        assert.deepEqual(hook.getScrimDiagnostics(), {frames: 0, suppressed: 0, meanAlpha: 0, hiddenHands: 0});
         hook.setAllowed(true); assert.equal(armed.at(-1), 1100);
         hook.setInputAllowed(true); assert.equal(armed.at(-1), 1100);
+        hook.setHandsHidden(true); assert.equal(armed.at(-1), 1100);
+        hook.setHandsHidden(false); assert.equal(armed.at(-1), 0);
         hook.setAllowed(false); assert.equal(armed.at(-1), 0);
         hook.stop(); hook.stop(); hook.setAllowed(true);
-        assert.equal(armed.at(-1), 0); assert.equal(detached.length, 4);
+        assert.equal(armed.at(-1), 0); assert.equal(detached.length, 5);
         attached.length = 0; detached.length = 0; failAttach = true;
         assert.throws(() => installPinnedScrim(() => 100), /attach failure/);
         assert.equal(armed.at(-1), 0); assert.equal(detached.length, 1);
@@ -183,7 +202,7 @@ test('setter hooks reject changed code and stop on failed installation or lost s
         const broken = installPinnedScrim(() => 100);
         failArm = true;
         assert.throws(() => broken.stop(), /native arm failure/);
-        assert.equal(detached.length, 4, 'native disarm failure must still detach every callback');
+        assert.equal(detached.length, 5, 'native disarm failure must still detach every callback');
         assert.doesNotThrow(() => broken.setAllowed(true), 'a stopped controller must not call native code');
     } finally {
         for (const name of names) {
