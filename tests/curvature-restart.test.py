@@ -1,5 +1,6 @@
 """Exercise the real generated shell controller with disposable processes and a fake injector."""
 import os
+import re
 import select
 from pathlib import Path
 import subprocess
@@ -241,7 +242,16 @@ class RestartTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("startup gate failed", result.stdout)
 
-    def make_gate(self):
+    def set_startup_age(self, seconds):
+        path = self.module / "restart.sh"
+        text, count = re.subn(r"^MIN_SYSTEMUI_AGE_SECONDS=\d+$",
+                              f"MIN_SYSTEMUI_AGE_SECONDS={seconds}", path.read_text(), flags=re.M)
+        self.assertEqual(count, 1)
+        path.write_text(text)
+
+    def make_gate(self, wait_for_age=True):
+        if wait_for_age:
+            self.set_startup_age(90)
         def target_id(process):
             start = Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()[19]
             return f"{BOOT}:{process.pid}:{start}"
@@ -262,8 +272,9 @@ class RestartTest(unittest.TestCase):
         process = subprocess.Popen(["sh", str(self.module / "restart.sh"), "await", old], env=self.env,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.controllers.append(process)
-        self.assertTrue(select.select([process.stderr], [], [], 5)[0])
-        self.assertIn("STARTUP_WAIT", process.stderr.readline())
+        if wait_for_age:
+            self.assertTrue(select.select([process.stderr], [], [], 5)[0])
+            self.assertIn("STARTUP_WAIT", process.stderr.readline())
         return process, old, current
 
     def test_gate_waits_without_consuming_the_handoff(self):
@@ -298,11 +309,13 @@ class RestartTest(unittest.TestCase):
         self.assertNotEqual(self.helper("authorize", old).returncode, 0)
         self.assertEqual(self.handoff.joinpath("new-target").read_text().strip(), current)
 
-    def cold_start(self):
+    def cold_start(self, wait_for_age=True):
+        if wait_for_age:
+            self.set_startup_age(90)
         fields = Path(f"/proc/{self.target.pid}/stat").read_text().rsplit(") ", 1)[1].split()
         ticks = int(subprocess.check_output(["getconf", "CLK_TCK"], text=True))
         start_seconds = int(fields[19]) / ticks
-        (self.root / "uptime").write_text(f"{start_seconds + 33:.2f} 0\n")
+        (self.root / "uptime").write_text(f"{start_seconds + (33 if wait_for_age else .01):.2f} 0\n")
         # An ordinary first start has no restart generation or handoff.
         self.coord.joinpath("generation").unlink()
         self.coord.joinpath("ready").unlink()
@@ -310,11 +323,48 @@ class RestartTest(unittest.TestCase):
             process = subprocess.Popen(["sh", str(self.module / "control.sh"), "run"],
                                        env=self.env, stdout=log, stderr=subprocess.STDOUT)
         self.controllers.append(process)
-        self.wait_for(lambda: "STARTUP_WAIT" in self.module.joinpath("service.log").read_text())
-        self.assertFalse(self.state.exists())
-        self.assertFalse(self.module.joinpath("injected-identity").exists())
-        self.assertFalse(self.root.joinpath("injector").exists())
+        if wait_for_age:
+            self.wait_for(lambda: "STARTUP_WAIT" in self.module.joinpath("service.log").read_text())
+            self.assertFalse(self.state.exists())
+            self.assertFalse(self.module.joinpath("injected-identity").exists())
+            self.assertFalse(self.root.joinpath("injector").exists())
         return process, start_seconds
+
+    def test_zero_age_cold_start_reaches_injection_without_a_fixed_wait(self):
+        self.set_startup_age(0)
+        process, unused = self.cold_start(wait_for_age=False)
+        self.wait_for(lambda: self.state.joinpath("status").exists() and
+                      self.state.joinpath("status").read_text().startswith("RUNNING"))
+        self.assertIsNone(process.poll())
+        log = self.module.joinpath("service.log").read_text()
+        self.assertNotIn("STARTUP_WAIT", log)
+        self.assertIn("minimum age 0 seconds", log)
+        self.assertFalse(self.module.joinpath("failure").exists())
+
+    def test_zero_age_restart_keeps_readiness_identity_and_one_use_authorization(self):
+        self.set_startup_age(0)
+        process, old, current = self.make_gate(wait_for_age=False)
+        out, err = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 0, out + err)
+        self.assertNotIn("STARTUP_WAIT", err)
+        self.assertEqual(self.handoff.joinpath("phase").read_text().strip(), "verified")
+        for marker in (self.coord / "busy", self.module / "failure", self.module / "disable"):
+            marker.touch()
+            self.assertNotEqual(self.helper("authorize", old).returncode, 0)
+            marker.unlink()
+        self.coord.joinpath("ready").unlink()
+        self.assertNotEqual(self.helper("authorize", old).returncode, 0)
+        self.coord.joinpath("ready").touch()
+        self.coord.joinpath("generation").write_text(NEXT_GEN)
+        self.assertNotEqual(self.helper("authorize", old).returncode, 0)
+        self.coord.joinpath("generation").write_text(GEN)
+        self.handoff.joinpath("new-target").write_text(BOOT + ":1:1")
+        self.assertNotEqual(self.helper("authorize", old).returncode, 0)
+        self.handoff.joinpath("new-target").write_text(current)
+        result = self.helper("authorize", old)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), current)
+        self.assertNotEqual(self.helper("authorize", old).returncode, 0)
 
     def test_cold_start_waits_for_process_age_before_any_injection(self):
         process, start = self.cold_start()

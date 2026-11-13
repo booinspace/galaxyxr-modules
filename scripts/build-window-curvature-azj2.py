@@ -788,6 +788,22 @@ def remove_borderless_delay(module: Path) -> None:
             "description=AZJ2 startup test: no extra 45-second Borderless wait; 90-second SystemUI age guard retained. Window controls with")
 
 
+def remove_startup_age_delay(module: Path) -> None:
+    """Build a separate zero-age experiment without bypassing restart validation."""
+    replace(module / "restart.sh", "MIN_SYSTEMUI_AGE_SECONDS=90", "MIN_SYSTEMUI_AGE_SECONDS=0")
+    replace(module / "module.prop", "version=0.1.56-azj2-startup-test",
+            "version=0.1.57-azj2-no-age-test")
+    replace(module / "module.prop", "versionCode=157", "versionCode=158")
+    replace(module / "module.prop", "AZJ2 startup test: no extra 45-second Borderless wait; 90-second SystemUI age guard retained.",
+            "AZJ2 startup experiment: no fixed SystemUI age or Borderless delay; readiness, identity and quarantine checks retained.")
+    replace(module / "webroot/index.html",
+            "Startup test: controls wait until SystemUI is 90 seconds old; borderless attaches after initialization. Reopen app windows afterward.",
+            "Startup experiment: no fixed SystemUI age delay. Controls attach after readiness and identity checks. Reopen app windows afterward.")
+    replace(module / "webroot/settings.js",
+            "After a Soft restart, waiting for SystemUI’s 90-second startup guard.",
+            "Checking Android readiness and SystemUI identity; no fixed startup delay.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM, help="Pinned upstream URL or local clone")
@@ -799,6 +815,8 @@ def main() -> None:
                         help="Include pitch, yaw and roll in the shared runtime (requires --integrated-borderless)")
     parser.add_argument("--no-borderless-delay", action="store_true",
                         help="Build the separate 0.1.56 timing test, retaining the 90-second SystemUI age guard")
+    parser.add_argument("--no-startup-age", action="store_true",
+                        help="Build the separate 0.1.57 zero-age experiment (requires --no-borderless-delay)")
     # Keep old build commands working; boundary alignment is now part of the combined build.
     parser.add_argument("--experimental-boundary", action="store_true", help=argparse.SUPPRESS)
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
@@ -810,6 +828,8 @@ def main() -> None:
         parser.error("--integrated-rotation requires --integrated-borderless")
     if args.no_borderless_delay and not args.integrated_rotation:
         parser.error("--no-borderless-delay requires the combined --integrated-rotation build")
+    if args.no_startup_age and not args.no_borderless_delay:
+        parser.error("--no-startup-age requires --no-borderless-delay")
     if args.experimental_boundary and not args.integrated_rotation:
         parser.error("--experimental-boundary requires --integrated-rotation")
     for name in ("java", "ecj", "r8", "android_jar"):
@@ -927,6 +947,8 @@ def main() -> None:
             integrate_supervisor_lease(module)
             if args.no_borderless_delay:
                 remove_borderless_delay(module)
+            if args.no_startup_age:
+                remove_startup_age_delay(module)
             subprocess.run([sys.executable, str(ROOT / "tests/pin-supervisor.test.py"),
                             str(module / "control.sh")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
@@ -1001,7 +1023,16 @@ def main() -> None:
              "Standalone curvature source worked on the headset; see README.md.\n")
         )
         (module / "README.md").write_bytes((ROOT / "docs/CURVATURE.md").read_bytes())
-        if args.no_borderless_delay:
+        if args.no_startup_age:
+            readme = module / "README.md"
+            readme.write_text(
+                "# Window Controls 0.1.57 zero-age startup experiment\n\n"
+                "Based on device-confirmed 0.1.56. Removes the fixed 90-second SystemUI age wait "
+                "and the extra Borderless delay. Android boot readiness, firmware hashes, process identity, "
+                "one-use restart authorization, heartbeat rollback and crash quarantine remain. "
+                "Early attachment is unverified; a crash can still require a full reboot. "
+                "Keep the confirmed 0.1.56 ZIP available.\n\n" + readme.read_text())
+        elif args.no_borderless_delay:
             readme = module / "README.md"
             readme.write_text(
                 "# Window Controls 0.1.56 immersive brightness candidate\n\n"
@@ -1022,7 +1053,8 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.56-azj2-startup-test" if args.no_borderless_delay else
+        version = ("0.1.57-azj2-no-age-test" if args.no_startup_age else
+                   "0.1.56-azj2-startup-test" if args.no_borderless_delay else
                    "0.1.55-azj2-experimental" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"

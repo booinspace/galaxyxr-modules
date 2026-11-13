@@ -110,15 +110,18 @@ bridge, menu layout and rollback supervisor.
 After enabling it, use one **KernelSU GXR Soft restart**. The module starts
 automatically after cleanup hooks and a single-use handoff authorize the new
 SystemUI process. Keep the module enabled for later Soft restarts. Startup
-waits for a **90-second SystemUI process age**, then the usual **45-second**
-Borderless delay. Allow up to **150 seconds** after Home Space returns, then
+waits for a **90-second SystemUI process age** in the confirmed 0.1.56 build;
+that ZIP has no additional Borderless delay. After it reaches RUNNING,
 fully close and reopen an app window. The delay does not retrofit an already
 restored window. The rim and resting pill hide; pointing at the top reveals
 the pill and retains dragging. The app's top menu contains Curve/Flatten,
 curvature strength, Pitch, Yaw, Roll and Reset rotation.
 
-The current package is `gxr-window-curvature-0.1.30-azj2-disabled.zip`. The build
-includes an ART/CMC bridge patch and checks the exact ART library hash before
+The confirmed package is `gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip`.
+The separate 0.1.57 experiment removes the fixed age delay while retaining
+readiness, firmware, identity and quarantine checks. Early startup still needs
+headset testing; see the [startup experiment](docs/CURVATURE.md#zero-age-startup-experiment).
+The build includes an ART/CMC bridge patch and checks the exact ART library hash before
 attachment.
 Recovery is built in: after a cold boot, module startup preserves diagnostics
 and acknowledges the previous boot's session automatically. **Action** starts

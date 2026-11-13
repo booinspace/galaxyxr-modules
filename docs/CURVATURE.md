@@ -167,6 +167,34 @@ Settings belong to each live window and are not saved across SystemUI restart
 or window recreation. The module does not remove an app's own letterboxing.
 Pitch and yaw can make a panel edge-on or turn it away from you.
 
+## Zero-age startup experiment
+
+The 90-second delay was added after a native ART crash during attachment at a
+SystemUI process age of about 33 seconds. It was a workaround, not an established
+Android XR minimum. The bridge now includes dispatch, entry-point and callback-
+lifetime corrections, but their presence does not prove early attachment is safe.
+
+The separate **0.1.57** build sets the minimum age to **zero** and has no additional
+Borderless delay. It still waits for Android boot completion or a ready, verified
+Soft restart handoff, validates firmware and the target's full identity, and
+rejects conflicting injectors, removal, disable and quarantine. A restart token
+still authorizes only its exact replacement process once. Build it by adding
+`--no-startup-age` to the confirmed `--no-borderless-delay` build command below.
+The default age remains 90 seconds.
+
+Keep the confirmed 0.1.56 ZIP. Install 0.1.57 as an update, enable it and use one
+GXR Soft restart to test a newly created SystemUI process. Before opening Action,
+check whether the controls appear automatically and record the startup report.
+No fixed age delay does not mean zero startup time: root, Android initialization
+and integrity checks still take time. If it crashes or quarantines, leave it off,
+export diagnostics and fully reboot before returning to 0.1.56.
+
+Shell regression checks exercise injection at a simulated age of 0.01 seconds
+and one-use restart authorization with the age delay removed, including rejection
+of busy, unready, changed-generation, wrong-target, disabled and quarantined
+states. They also retain the 90-second wait/cancellation tests. These checks do
+not reproduce ART initialization on the headset; early device startup is unverified.
+
 ## Feature settings and wrist grabs
 
 The module's **Action** starts the enabled runtime, exports logs and
@@ -347,14 +375,16 @@ GXR_ECJ=/path/to/ecj-3.39.0.jar
 GXR_R8=/path/to/android-sdk/cmdline-tools/latest/lib/r8.jar
 GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
 .build/venv/bin/python scripts/build-window-curvature-azj2.py \
-  --integrated-borderless --integrated-rotation \
+  --integrated-borderless --integrated-rotation --no-borderless-delay \
   --java /usr/bin/java --ecj "$GXR_ECJ" --r8 "$GXR_R8" \
   --android-jar "$GXR_ANDROID_JAR" \
   --cache .build/cache --output .build/output
 ```
 
-The output is `gxr-window-curvature-0.1.30-azj2-disabled.zip`
-and its `.sha256` sidecar. ECJ SHA-256:
+The confirmed-build output is `gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip`.
+Adding `--no-startup-age` produces the separate
+`gxr-window-curvature-0.1.57-azj2-no-age-test-disabled.zip`.
+Both have a `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.
 The builder fetches upstream commit
 `dd1a8915e3bbb8ea44f99033c8bc0dc8fdc22bd2`, verifies Frida downloads, compiles
