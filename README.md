@@ -11,7 +11,7 @@ DirtyFrag, KernelSU GXR and root instructions.
 Download [Window Controls 0.1.60](releases/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip)
 and its [checksum](releases/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip.sha256).
 Other published module ZIPs are on the
-[AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
+[AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.13).
 
 Window Controls now includes **hand positional rotation**: grab a window to
 move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
