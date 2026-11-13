@@ -390,10 +390,11 @@ GXR_ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar
   --cache .build/cache --output .build/output
 ```
 
-The current builder produces `gxr-window-curvature-0.1.59-azj2-startup-test-disabled.zip`.
+The current builder produces `gxr-window-curvature-0.1.62-azj2-startup-test-disabled.zip`.
 Adding `--no-startup-age` produces the separate
-`gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip`.
-These include the pin-focus and hand-outline changes confirmed with 0.1.60.
+`gxr-window-curvature-0.1.63-azj2-no-age-test-disabled.zip`.
+These retain the pin-focus and hand-outline changes confirmed with 0.1.60 and
+add the [Home overflow clipping fix](HOME-PINS.md), which needs a headset test.
 The earlier 0.1.56 and startup-tested 0.1.57 ZIPs remain in `releases/`.
 Both have a `.sha256` sidecar. ECJ SHA-256:
 `01f5a92ac19bb2b3bf85e295a68f2c73c264369109158b566ce9b490af982948`.

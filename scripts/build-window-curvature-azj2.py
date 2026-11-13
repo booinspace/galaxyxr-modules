@@ -549,8 +549,8 @@ def integrate_immersive_pins(work: Path, module: Path) -> None:
     shutil.copyfile(ROOT / "scripts/curvature-pins-scrim.mjs",
                     module / "agent/curvature-pins-scrim.mjs")
     shutil.copyfile(ROOT / "scripts/curvature-pins.sh", module / "pins.sh")
-    replace(module / "module.prop", "version=0.1.30-azj2", "version=0.1.58-azj2-experimental")
-    replace(module / "module.prop", "versionCode=131", "versionCode=159")
+    replace(module / "module.prop", "version=0.1.30-azj2", "version=0.1.61-azj2-experimental")
+    replace(module / "module.prop", "versionCode=131", "versionCode=162")
     replace(module / "module.prop", "description=AZJ2 window controls with",
             "description=Experimental AZJ2 window controls with opt-in immersive app pins,")
     pins = module / "firmware.sha256"
@@ -781,9 +781,9 @@ def remove_borderless_delay(module: Path) -> None:
     replace(module / "webroot/settings.js",
             "App window setup: waiting up to 45 seconds after runtime start. Then close and reopen the app.",
             "App window setup: waiting for initialization. Then close and reopen the app.")
-    replace(module / "module.prop", "version=0.1.58-azj2-experimental",
-            "version=0.1.59-azj2-startup-test")
-    replace(module / "module.prop", "versionCode=159", "versionCode=160")
+    replace(module / "module.prop", "version=0.1.61-azj2-experimental",
+            "version=0.1.62-azj2-startup-test")
+    replace(module / "module.prop", "versionCode=162", "versionCode=163")
     replace(module / "module.prop", "description=Experimental AZJ2 window controls with",
             "description=AZJ2 startup test: no extra 45-second Borderless wait; 90-second SystemUI age guard retained. Window controls with")
 
@@ -791,9 +791,9 @@ def remove_borderless_delay(module: Path) -> None:
 def remove_startup_age_delay(module: Path) -> None:
     """Build a separate zero-age experiment without bypassing restart validation."""
     replace(module / "restart.sh", "MIN_SYSTEMUI_AGE_SECONDS=90", "MIN_SYSTEMUI_AGE_SECONDS=0")
-    replace(module / "module.prop", "version=0.1.59-azj2-startup-test",
-            "version=0.1.60-azj2-no-age-test")
-    replace(module / "module.prop", "versionCode=160", "versionCode=161")
+    replace(module / "module.prop", "version=0.1.62-azj2-startup-test",
+            "version=0.1.63-azj2-no-age-test")
+    replace(module / "module.prop", "versionCode=163", "versionCode=164")
     replace(module / "module.prop", "AZJ2 startup test: no extra 45-second Borderless wait; 90-second SystemUI age guard retained.",
             "AZJ2 startup experiment: no fixed SystemUI age or Borderless delay; readiness, identity and quarantine checks retained.")
     replace(module / "webroot/index.html",
@@ -814,9 +814,9 @@ def main() -> None:
     parser.add_argument("--integrated-rotation", action="store_true",
                         help="Include pitch, yaw and roll in the shared runtime (requires --integrated-borderless)")
     parser.add_argument("--no-borderless-delay", action="store_true",
-                        help="Build the separate 0.1.59 timing test, retaining the 90-second SystemUI age guard")
+                        help="Build the separate 0.1.62 timing test, retaining the 90-second SystemUI age guard")
     parser.add_argument("--no-startup-age", action="store_true",
-                        help="Build the separate 0.1.60 zero-age experiment (requires --no-borderless-delay)")
+                        help="Build the separate 0.1.63 zero-age experiment (requires --no-borderless-delay)")
     # Keep old build commands working; boundary alignment is now part of the combined build.
     parser.add_argument("--experimental-boundary", action="store_true", help=argparse.SUPPRESS)
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
@@ -1026,16 +1026,16 @@ def main() -> None:
         if args.no_startup_age:
             readme = module / "README.md"
             readme.write_text(
-                "# Window Controls 0.1.60 pin focus and hand visibility\n\n"
-                "Based on the device-tested zero-age 0.1.57 startup. Returns Android focus from an owned pin to the unique visible immersive task and shows SystemUI hand outlines only while pin interaction is wanted. Removes the fixed 90-second SystemUI age wait "
+                "# Window Controls 0.1.63 Home grid clipping\n\n"
+                "Based on device-confirmed 0.1.60. Keeps normal Home icon sizes and clips scrolling rows below the toolbar. Restores original clipping when overflow ends or the module stops. Removes the fixed 90-second SystemUI age wait "
                 "and the extra Borderless delay. Android boot readiness, firmware hashes, process identity, "
                 "one-use restart authorization, heartbeat rollback and crash quarantine remain. "
-                "Pin focus handoff and hand visibility require device testing; a crash can still require a full reboot. "
-                "Keep the confirmed 0.1.56 ZIP available.\n\n" + readme.read_text())
+                "Home overflow clipping requires headset testing; a crash can still require a full reboot. "
+                "Keep the confirmed 0.1.60 ZIP available.\n\n" + readme.read_text())
         elif args.no_borderless_delay:
             readme = module / "README.md"
             readme.write_text(
-                "# Window Controls 0.1.59 immersive brightness candidate\n\n"
+                "# Window Controls 0.1.62 immersive brightness candidate\n\n"
                 "Suppresses the separate fullscreen scrim while only owned pins are visible over an immersive app; native diagnostics report the mean requested alpha and suppressed frames. Visual brightness verification is pending. Retains the device-confirmed menu cancellation, restored-caption binding, scoped pin rotation/resizing, VR focus/input routing and tracking leases. Removes only the extra 45-second Borderless wait; "
                 "the 90-second SystemUI process-age guard, firmware checks and quarantine remain. "
                 "Borderless is queued immediately after agent initialization and can still be cancelled on stop.\n\n"
@@ -1053,9 +1053,9 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.60-azj2-no-age-test" if args.no_startup_age else
-                   "0.1.59-azj2-startup-test" if args.no_borderless_delay else
-                   "0.1.58-azj2-experimental" if args.integrated_rotation else
+        version = ("0.1.63-azj2-no-age-test" if args.no_startup_age else
+                   "0.1.62-azj2-startup-test" if args.no_borderless_delay else
+                   "0.1.61-azj2-experimental" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],

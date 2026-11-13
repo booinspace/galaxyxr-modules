@@ -38,6 +38,9 @@ and resize input intact.
 Version **0.1.30** also raises Home's pin limit to 50. It keeps the
 five-column tiles and panel size, adding vertical scrolling above 10 apps.
 See the [Home pins guide](docs/HOME-PINS.md).
+Candidate 0.1.63 clips scrolling app rows inside their existing area so they
+cannot draw over the system toolbar. Icon sizes stay unchanged; headset
+validation of this layout fix is pending.
 The 90-second startup-age check now covers ordinary starts as well as planned
 restarts. A 0.1.26 crash occurred before that age; the native cause is unresolved.
 The verified restart hook now queues startup directly, with the normal service

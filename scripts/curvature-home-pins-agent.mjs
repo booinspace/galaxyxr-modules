@@ -4,10 +4,11 @@ export const HOME_PIN_LIMIT = 50;
 export function installHomePins(Java, permitted) {
     const First = Java.use('com.android.systemui.xr.launcher.allapps.ui.view.FirstPageGridLayoutManager');
     const Grid = Java.use('androidx.recyclerview.widget.GridLayoutManager');
+    const LayoutManager = Java.use('androidx.recyclerview.widget.RecyclerView$LayoutManager');
     const Repository = Java.use('com.android.systemui.xr.pinning.data.PinningAppsRepositoryImpl');
     const Pinning = Java.use('com.android.systemui.xr.pinning.PinningAppsImpl');
     const Flags = Java.use('com.android.xr.flags.Flags');
-    const BooleanType = Java.use('java.lang.Boolean');
+    const IntegerType = Java.use('java.lang.Integer');
     const ArrayList = Java.use('java.util.ArrayList');
     const managers = Java.retain(Java.use('java.util.WeakHashMap').$new());
     const signature = ['androidx.recyclerview.widget.RecyclerView$Recycler',
@@ -29,7 +30,22 @@ export function installHomePins(Java, permitted) {
         for (let i = 0; i < snapshot.size(); i++) callback(Java.cast(snapshot.get(i), First));
     }
     function remember(manager) {
-        managers.put(manager, BooleanType.TRUE.value);
+        if (!managers.containsKey(manager)) managers.put(manager, IntegerType.valueOf(-1));
+    }
+    function clipOverflow(manager, enabled) {
+        const saved = managers.get(manager);
+        if (saved === null) return;
+        let flags = Number(Java.cast(saved, IntegerType).intValue());
+        if (flags < 0 && !enabled) return;
+        const view = Java.cast(manager, LayoutManager).mRecyclerView.value;
+        if (view === null) return;
+        if (flags < 0) {
+            flags = (view.getClipChildren() ? 1 : 0) | (view.getClipToPadding() ? 2 : 0);
+            managers.put(manager, IntegerType.valueOf(flags));
+        }
+        // Samsung disables clipping for the fixed grid; scrolling rows must stay below the toolbar.
+        view.setClipChildren(enabled || (flags & 1) !== 0);
+        view.setClipToPadding(enabled || (flags & 2) !== 0);
     }
     function error(value) {
         enabled = false;
@@ -45,6 +61,7 @@ export function installHomePins(Java, permitted) {
             try {
                 for (const hook of hooks) hook.implementation = null;
                 eachManager(manager => {
+                    clipOverflow(manager, false);
                     manager.scrollToPosition(0);
                     manager.requestLayout();
                 });
@@ -68,7 +85,9 @@ export function installHomePins(Java, permitted) {
             try {
                 if (active()) remember(this);
                 layouts++;
-                if (state !== null && overflow(this)) {
+                const expanded = state !== null && overflow(this);
+                clipOverflow(this, expanded);
+                if (expanded) {
                     overflowLayouts++;
                     // A virtual JNI call would re-enter this same final override.
                     return baseLayout.call(this.$super, recycler, state);

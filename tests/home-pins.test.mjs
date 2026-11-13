@@ -35,13 +35,15 @@ function fixture({existing = [], delayedDiscovery = false, missingClass = false}
     const classes = {
         [First.$className]: First,
         'androidx.recyclerview.widget.GridLayoutManager': Grid,
+        'androidx.recyclerview.widget.RecyclerView$LayoutManager': {},
         'com.android.systemui.xr.pinning.data.PinningAppsRepositoryImpl': {getLimit: limit},
         'com.android.systemui.xr.pinning.PinningAppsImpl': {getPinnedAppsLimit: cachedLimit},
         'com.android.xr.flags.Flags': {enableTaskhome: () => taskhome},
-        'java.lang.Boolean': {TRUE: {value: true}},
+        'java.lang.Integer': {valueOf: value => ({intValue: () => value})},
         'java.util.ArrayList': {$new: values => ({size: () => values.length, get: i => values[i]})},
         'java.util.WeakHashMap': {$new: () => ({
             put: (key, value) => map.set(key, value), keySet: () => [...map.keys()],
+            containsKey: key => map.has(key), get: key => map.get(key) ?? null,
             clear: () => map.clear(), $dispose: () => { disposed = true; },
         })},
     };
@@ -74,8 +76,13 @@ function fixture({existing = [], delayedDiscovery = false, missingClass = false}
     };
 }
 
-function manager(count) {
+function manager(count, clipChildren = false, clipToPadding = false) {
+    const view = {
+        getClipChildren: () => clipChildren, getClipToPadding: () => clipToPadding,
+        setClipChildren: value => { clipChildren = value; }, setClipToPadding: value => { clipToPadding = value; },
+    };
     const value = {count, requests: 0, positions: [], getItemCount() { return this.count; },
+        mRecyclerView: {value: view},
         requestLayout() { this.requests++; }, scrollToPosition(i) { this.positions.push(i); }};
     value.$super = {direct: true, owner: value};
     return value;
@@ -127,6 +134,38 @@ test('losing the supervisor lease or taskhome flag returns overflow to stock beh
         assert.equal(f.scroll.implementation.call(m), false);
         assert.equal(f.focus.implementation.call(m, {}, 130), 'stock-focus');
     }
+});
+
+test('scrolling rows clip inside Home and restore each original flag on reduction or stop', () => {
+    for (const children of [false, true]) for (const padding of [false, true]) {
+        const m = manager(15, children, padding), f = fixture({existing: [m]});
+        const controller = f.install(); f.flush();
+        const view = m.mRecyclerView.value;
+        for (let n = 0; n < 2; n++) {
+            f.layout.implementation.call(m, {}, {});
+            assert.equal(view.getClipChildren(), true);
+            assert.equal(view.getClipToPadding(), true);
+        }
+        m.count = 10; f.layout.implementation.call(m, {}, {});
+        assert.equal(view.getClipChildren(), children);
+        assert.equal(view.getClipToPadding(), padding);
+        m.count = 50; f.layout.implementation.call(m, {}, {});
+        controller.stop(); f.flush();
+        assert.equal(controller.isRestored(), true);
+        assert.equal(view.getClipChildren(), children);
+        assert.equal(view.getClipToPadding(), padding);
+    }
+});
+
+test('lease loss restores clipping and detached managers do not write a view', () => {
+    const m = manager(15), f = fixture(); const controller = f.install();
+    f.layout.implementation.call(m, {}, {});
+    f.permit(false); f.layout.implementation.call(m, {}, {});
+    assert.equal(m.mRecyclerView.value.getClipChildren(), false);
+    assert.equal(m.mRecyclerView.value.getClipToPadding(), false);
+    f.permit(true); m.mRecyclerView.value = null;
+    assert.doesNotThrow(() => f.layout.implementation.call(m, {}, {}));
+    controller.stop(); f.flush(); assert.equal(controller.isRestored(), true);
 });
 
 test('reflows existing Home views on the UI thread and returns to stock after reducing to ten', () => {

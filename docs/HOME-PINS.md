@@ -6,6 +6,11 @@ Home keeps its panel size, tile dimensions and five columns. With more than
 existing centered layout stays in use. Pin, launch, reorder and unpin through
 the existing launcher controls.
 
+Candidate 0.1.63 fixes scrolling rows drawing over the system toolbar. The
+icons keep their normal size and the grid keeps its existing position and
+height; offscreen rows are clipped inside the app area. This layout change
+has host checks but still needs a headset test.
+
 This feature is included in the combined Window Controls ZIP and uses its
 existing SystemUI runtime. Temporary root and the enabled, running module are
 required. On 12 November 2026, the user confirmed that 0.1.30 installed and
@@ -16,12 +21,14 @@ live process identity. Extended idle/wake behavior remains unverified.
 ## Install and test
 
 1. Follow the [combined module update guide](CURVATURE.md#updating-without-a-full-reboot)
-   with `gxr-window-curvature-0.1.30-azj2-disabled.zip`.
+   with `gxr-window-curvature-0.1.63-azj2-no-age-test-disabled.zip`.
 2. Enable Window Controls and use one KernelSU GXR Soft restart. Keep Home
-   awake and allow up to 150 seconds for automatic startup. Check Home before
+   awake until the window controls return. This build has no fixed startup-age
+   or Borderless delay. Check Home before
    opening Action so manual activation cannot mask a failed automatic start.
 3. Open Home and pin an eleventh app using the usual app menu. Scroll within
-   the pinned-app area to reach the third row and launch that app.
+   the pinned-app area to reach the third row and launch that app. Scroll both
+   ways and confirm the clock and system buttons stay unobstructed.
 4. Check reordering, unpinning and returning to 10 pins. Also check curvature,
    hand rotation, borders and normal app input, then use Action → Export logs.
 
@@ -48,6 +55,13 @@ module calls that manager's existing `GridLayoutManager` superclass for
 layout and scrolling, and lets RecyclerView perform normal focus navigation.
 It keeps the same manager instance, span count, panel resources and adapter.
 Superclass calls use Frida's direct wrapper to avoid virtual recursion.
+
+Samsung's active AZJ2 overlay sets `clipChildren` and `clipToPadding` to false
+on the pinned-app RecyclerView. With scrolling enabled, that allows offscreen
+icons to draw above its bounds and over the toolbar. Candidate 0.1.63 enables
+both clipping flags only for the expanded grid, retaining each original flag
+for restoration when the count returns to 10, the lease expires or the module
+stops. The parent layout, icon scale and click targets stay unchanged.
 
 Existing Home views are reflowed on the UI thread. On stop, the hooks are
 removed and tracked managers return to the first row before cleanup is

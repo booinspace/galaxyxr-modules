@@ -10,6 +10,12 @@ public final class PinResizeAbi {
         return method.invoke(target, args);
     }
     public static void main(String[] args) throws Exception {
+        if (type("androidx.recyclerview.widget.RecyclerView$LayoutManager").getDeclaredField("mRecyclerView")
+                .getType() != type("androidx.recyclerview.widget.RecyclerView")) throw new AssertionError("Home grid owner ABI");
+        for (String name : new String[] {"Children", "ToPadding"}) {
+            type("android.view.ViewGroup").getMethod("getClip" + name);
+            type("android.view.ViewGroup").getMethod("setClip" + name, boolean.class);
+        }
         Class<?> director = type("com.android.wm.shell.windowdecor.XrCaptionWindowDecorDirector");
         for (String field : new String[] {"mainHandler", "context", "coroutineScope", "taskOperations", "taskOrganizer"}) director.getDeclaredField(field);
         director.getDeclaredField("taskOrganizer").getType().getMethod("getRunningTasks", int.class);
