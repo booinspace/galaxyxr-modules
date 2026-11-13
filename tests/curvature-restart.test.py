@@ -46,7 +46,7 @@ class RestartTest(unittest.TestCase):
             path.write_text("#!/bin/sh\n" + body + "\n")
             path.chmod(0o755)
         self.env = {**os.environ, "PATH": f"{commands}:{os.environ['PATH']}"}
-        for name in ("control.sh", "boot-recovery.sh", "restart.sh", "recovery.sh", "features.sh",
+        for name in ("control.sh", "boot-recovery.sh", "restart.sh", "recovery.sh", "features.sh", "pins.sh",
                      "restart-prepare.sh", "restart-stopped.sh", "restart-started.sh", "restart-abort.sh"):
             text = (SOURCE / name).read_text()
             for before, after in {

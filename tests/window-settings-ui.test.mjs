@@ -4,12 +4,14 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 
 const source = readFileSync(new URL('../modules/window-controls/webroot/settings.js', import.meta.url), 'utf8');
+const pins = readFileSync(new URL('../modules/window-controls/webroot/pins.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
-function page(withRoot = true) {
+function page(withRoot = true, withPins = false) {
     const elements = new Map(), commands = [], intervals = [];
     for (const name of ['status', 'runtime', 'features', 'switches', 'save', 'start', 'logs',
-                        'curvature', 'borderless', 'rotation', 'grab']) {
-        elements.set(name, {checked: false, disabled: false, textContent: '', events: {},
+                        'curvature', 'borderless', 'rotation', 'grab', 'pin-package',
+                        'pin-app', 'pin-minimize', 'pin-restore', 'pin-close-all']) {
+        elements.set(name, {checked: false, disabled: false, textContent: '', value: '', events: {},
             classList: {toggle() {}}, addEventListener(type, listener) { this.events[type] = listener; }});
     }
     const data = {curvature: 1, borderless: 1, rotation: 1, grab: 0,
@@ -21,7 +23,7 @@ function page(withRoot = true) {
         commands.push({command, options});
         context[callback](0, JSON.stringify(data), '');
     }};
-    runInNewContext(source, context);
+    runInNewContext(source + (withPins ? '\n' + pins : ''), context);
     return {elements, commands, intervals, data};
 }
 
@@ -66,4 +68,26 @@ test('a normal browser reports the missing KernelSU bridge', async () => {
     await flush();
     assert.match(f.elements.get('status').textContent, /KernelSU GXR/);
     assert.equal(f.commands.length, 0);
+});
+
+test('pin UI rejects shell text and sends fixed controls for the selected app', async () => {
+    const f = page(true, true);
+    await flush();
+    const before = f.commands.length;
+    f.elements.get('pin-package').value = 'app.symfonik.music.player; id';
+    await f.elements.get('pin-app').events.click();
+    assert.equal(f.commands.length, before);
+    assert.match(f.elements.get('status').textContent, /installed app package/);
+    f.elements.get('pin-package').value = ' app.symfonik.music.player ';
+    await f.elements.get('pin-app').events.click();
+    assert.equal(f.commands.at(-1).command,
+        'sh /data/adb/modules/gxr_window_curvature/pins.sh pin app.symfonik.music.player');
+    assert.match(f.elements.get('status').textContent, /Pinned/);
+    for (const [button, action] of [['pin-minimize', 'minimize'], ['pin-restore', 'restore'],
+                                   ['pin-close-all', 'close-all']]) {
+        await f.elements.get(button).events.click();
+        assert.equal(f.commands.at(-1).command,
+            'sh /data/adb/modules/gxr_window_curvature/pins.sh ' + action);
+        assert.equal(f.elements.get(button).disabled, false);
+    }
 });

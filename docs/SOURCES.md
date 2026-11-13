@@ -38,11 +38,31 @@ Runtime and build components:
   `354bec3059c53cf9f83d3d8f3dcc81417654c0a2620bfac188c52e0092ba84bd`.
   Both the patch and original npm archive are included for source availability;
   the bridge's existing license remains applicable.
+- ART quick-code and JNI callback-lifetime guards by
+  [booinspace](https://github.com/booinspace): suspend ART threads during
+  entry-point writes/restoration and retain retired callbacks until script
+  teardown. The exact local patch and original bridge archive are included.
+  [Upstream race discussion](https://github.com/frida-packages/frida-java-bridge/pull/401)
+  informed the investigation; this does not incorporate that entire proposal.
+- The experimental candidate adapts
+  [Kolektori's lock-free ART dispatch proposal](https://github.com/frida-packages/frida-java-bridge/pull/401),
+  commit `dde975ddd6cc8ea8e8667d9a6f5629b22ff16a1c`. Local corrections by
+  booinspace use atomic head publication and finish deletion snapshots before
+  publishing them. The original bridge archive and complete modified patch are
+  included under the bridge's existing license; this is an open upstream
+  proposal, not an official released fix.
 - [ECJ 3.39.0](https://repo.maven.apache.org/maven2/org/eclipse/jdt/ecj/3.39.0/)
   and [Android D8/R8](https://developer.android.com/tools/d8): host Java/DEX
   build tools. They are not installed on the headset.
 
 ## Window settings and wrist rotation
+
+The opt-in [immersive app pins](IMMERSIVE-PINS.md) launcher, caption integration
+and eye-fade helper are also by [booinspace](https://github.com/booinspace), as
+are its gaze-coordinate conversion and scoped compositor brightness hook.
+Their framework contracts and native eye-pose layout come from private inspection
+of the exact AZJ2 firmware. No vendor implementation or firmware binary is included.
+They share BlueScorpioVR's runtime and the dependency notices above.
 
 The Action settings page, wrist-grab integration and aligned movement/resize
 boundaries are by [booinspace](https://github.com/booinspace). The native reader

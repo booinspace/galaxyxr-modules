@@ -73,6 +73,9 @@ public final class ActivityManager {
     }
 }
 """,
+    "com/android/wm/shell/windowdecor/XrCaptionWindowDecoration.java": """package com.android.wm.shell.windowdecor;
+public final class XrCaptionWindowDecoration extends local.gxr.rotation.RotationControllerTest.Decor { }
+""",
     "android/graphics/CPM.java": """package android.graphics;
 public final class CPM {
     public static final class Node {
@@ -144,12 +147,21 @@ public final class RotationControllerTest {
         final Task task = new Task();
         public Task getTaskSubspace(int id) { return id == 42 ? task : null; }
     }
-    public static final class Decor {
+    public static class Decor {
         final RunningTaskInfo mTaskInfo = new RunningTaskInfo();
         final Repository taskSubspaceRepository = new Repository();
         final RelayoutResult relayoutResult = new RelayoutResult();
     }
     public static final class RelayoutResult { final View mRootView = new View(); }
+    public static final class Decorations {
+        final java.util.List<Object> values = new java.util.ArrayList<>();
+        public int size() { return values.size(); }
+        public Object valueAt(int index) { return values.get(index); }
+    }
+    public static final class Director {
+        final Handler mainHandler = new Handler(android.os.Looper.myLooper());
+        final Decorations windowDecorByTaskId = new Decorations();
+    }
     public static final class Pill {
         final View view = new View();
         public View getView() { return view; }
@@ -275,7 +287,70 @@ public final class RotationControllerTest {
         grab.controller.setEnabled(true);
         check(grab.attach() != null);
         grab.stop(); check(grab.controller.isRestored());
-        System.out.println("PASS: shared/isolated attachment, node ownership, rollback retry, Home Space and heartbeat expiry");
+        Fixture pin = new Fixture();
+        pin.controller.pulse(false, new int[] {43});
+        pin.controller.bindWindow(pin.menu.parentDecor, pin.menu.parentDecor.relayoutResult.mRootView);
+        check(pin.attach() == null && pin.controller.getBoundTaskIds().length == 0);
+        pin.controller.setGrabEnabled(true);
+        transform = pin.menu.parentDecor.taskSubspaceRepository.task.transform;
+        pin.controller.onGrab(transform, 9, 1, initial, initial, SystemClock.now);
+        Handler.runDue();
+        check(pin.controller.getStatus().contains("sessions=0"));
+        int[] pins = {42};
+        pin.controller.pulse(false, pins); pins[0] = 43;
+        check(pin.controller.getBoundTaskIds().length == 1);
+        controls = pin.attach(); check(controls != null);
+        for (int axis = 0; axis < 3; axis++) controls.session.set(axis, 30);
+        check(controls.session.angles[0] == 30 && controls.session.angles[1] == 30 && controls.session.angles[2] == 30);
+        controls.session.reset();
+        pin.controller.onGrab(transform, 9, 1, initial, initial, SystemClock.now);
+        Handler.runDue();
+        float[] tilted = RotationMath.orientation(25, -40, 60);
+        pin.controller.onGrab(transform, 9, 2, tilted, initial, SystemClock.now);
+        Handler.runDue();
+        check(pin.controller.getStatus().contains("grab=applied"));
+        for (int i = 0; i < 4; i++) check(Math.abs(CPM.NodeUpdates.last[i] - tilted[i]) < .00001f);
+        pin.controller.onGrab(transform, 9, 3, tilted, initial, SystemClock.now);
+        Handler.runDue();
+        pin.controller.pulse(false, new int[] {42});
+        SystemClock.now += 500; Handler.runDue();
+        check(!controls.closed);
+        for (int i = 0; i < 4; i++) check(Math.abs(CPM.NodeUpdates.last[i] - tilted[i]) < .00001f);
+        pin.controller.onGrab(transform, 10, 1, initial, initial, SystemClock.now);
+        pin.controller.pulse(false, new int[0]);
+        Handler.runDue(); check(!pin.controller.getStatus().contains("grab=started"));
+        SystemClock.now += 500; Handler.runDue(); identity(); check(controls.closed);
+        pin.stop(); check(pin.controller.isRestored());
+        Fixture invalidPin = new Fixture();
+        for (int[] invalid : new int[][] {null, {0}, {-1}, new int[9]}) {
+            try { invalidPin.controller.pulse(false, invalid); throw new AssertionError("Invalid pins accepted"); }
+            catch (IllegalArgumentException expected) { }
+        }
+        invalidPin.stop();
+        Fixture restoredCaption = new Fixture();
+        Director director = new Director();
+        Decor captionDecor = new com.android.wm.shell.windowdecor.XrCaptionWindowDecoration();
+        director.windowDecorByTaskId.values.add(new Object()); // Non-caption system decorations stay excluded.
+        director.windowDecorByTaskId.values.add(captionDecor);
+        restoredCaption.controller.bindExistingWindows(director);
+        check(restoredCaption.controller.getBoundTaskIds().length == 0);
+        Handler.runDue();
+        check(restoredCaption.controller.getBoundTaskIds().length == 1);
+        restoredCaption.controller.setGrabEnabled(true);
+        transform = captionDecor.taskSubspaceRepository.task.transform;
+        restoredCaption.controller.onGrab(transform, 17, 1, initial, initial, SystemClock.now);
+        Handler.runDue();
+        restoredCaption.controller.onGrab(transform, 17, 2, roll, initial, SystemClock.now);
+        Handler.runDue();
+        check(restoredCaption.controller.getStatus().contains("grab=applied"));
+        check(Math.abs(CPM.NodeUpdates.last[3] - .70710677f) < .00001f);
+        restoredCaption.stop(); identity();
+        Fixture cancelledScan = new Fixture();
+        cancelledScan.controller.bindExistingWindows(director);
+        cancelledScan.stop();
+        check(cancelledScan.controller.getBoundTaskIds().length == 0 && cancelledScan.controller.isRestored());
+        System.out.println("PASS: node ownership, rollback, Home/pin isolation, three-axis pin grabs and heartbeat expiry");
+        System.out.println("PASS: restored captions bind without opening a menu; shutdown cancels queued discovery");
     }
 }
 """,
@@ -296,7 +371,7 @@ def main():
             path.write_text(text)
             paths.append(path)
         production = ROOT / "modules/window-rotation/android/local/gxr/rotation"
-        paths.extend(production / name for name in ("RotationController.java", "RotationMath.java"))
+        paths.extend(production / name for name in ("RotationController.java", "RotationMath.java", "WindowFeatures.java"))
         output = work / "classes"
         subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
                         "-proc:none", "-d", str(output), *(str(path) for path in paths)], check=True)

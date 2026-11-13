@@ -14,6 +14,7 @@ label:first-of-type { border-radius: 14px 14px 0 0; }
 label:last-of-type { border-radius: 0 0 14px 14px; border: 0; }
 small { display: block; color: #b6b9c8; font-size: 14px; margin-top: 4px; }
 input { flex: 0 0 auto; width: 28px; height: 28px; accent-color: #b9c5ff; }
+input[type="text"] { box-sizing: border-box; width: 100%; height: auto; min-height: 52px; padding: 12px; border: 1px solid #596078; border-radius: 8px; font: inherit; color: inherit; background: transparent; }
 button { border: 1px solid #596078; border-radius: 12px; padding: 14px 20px; min-height: 52px; font: inherit; color: #e8e9f0; background: #262a37; cursor: pointer; }
 #save { background: #b9c5ff; color: #14204b; font-weight: 600; width: 100%; }
 button:disabled, fieldset:disabled { opacity: .55; cursor: default; }

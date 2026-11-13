@@ -1,0 +1,61 @@
+--- a/lib/android.js
++++ b/lib/android.js
+@@ -3660,23 +3660,28 @@
+     this.overwrittenPrologue = Memory.dup(this.quickCodeAddress, prologueLength);
+ 
+     const writePrologue = artQuickCodePrologueWriters[Process.arch];
+-    writePrologue(quickCode, trampoline, redirectSize);
++    // ART threads must not execute a partially written multi-instruction redirect.
++    withAllArtThreadsSuspended(() => {
++      writePrologue(quickCode, trampoline, redirectSize);
++    });
+   }
+ 
+   deactivate () {
+     const { quickCodeAddress, overwrittenPrologueLength: prologueLength } = this;
+ 
+     const Writer = thunkWriters[Process.arch];
+-    Memory.patchCode(quickCodeAddress, prologueLength, code => {
+-      const writer = new Writer(code, { pc: quickCodeAddress });
+-
+-      const { overwrittenPrologue } = this;
+-
+-      writer.putBytes(overwrittenPrologue.readByteArray(prologueLength));
+-      writer.flush();
++    withAllArtThreadsSuspended(() => {
++      Memory.patchCode(quickCodeAddress, prologueLength, code => {
++        const writer = new Writer(code, { pc: quickCodeAddress });
++
++        const { overwrittenPrologue } = this;
++
++        writer.putBytes(overwrittenPrologue.readByteArray(prologueLength));
++        writer.flush();
++      });
++
++      this._destroyTrampoline();
+     });
+-
+-    this._destroyTrampoline();
+   }
+ }
+ 
+--- a/lib/class-factory.js
++++ b/lib/class-factory.js
+@@ -43,6 +43,8 @@
+   loaders: null,
+   Integer: null
+ };
++
++const retiredImplementations = [];
+ 
+ let vm = null;
+ let api = null;
+@@ -1715,6 +1717,8 @@
+ 
+         const mangler = existingReplacement._m;
+         mangler.revert(vm);
++        // JNI callers can still be returning through the retired callback.
++        retiredImplementations.push(existingReplacement);
+ 
+         this._r = undefined;
+       }

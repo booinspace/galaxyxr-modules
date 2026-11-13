@@ -22,10 +22,13 @@ public final class RotationController {
     private volatile long heartbeat = SystemClock.uptimeMillis();
     private volatile boolean stopping;
     private volatile boolean homeSpace = true;
+    private volatile int[] pinnedTasks = new int[0];
     private volatile boolean enabled = true;
     private volatile boolean grabEnabled;
     private volatile String error = "";
     private volatile String grabStatus = "idle";
+    private Handler captionOwner;
+    private Runnable captionScan;
 
     static Object field(Object object, String name) throws Exception {
         for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
@@ -70,8 +73,22 @@ public final class RotationController {
     }
 
     public void pulse() { heartbeat = SystemClock.uptimeMillis(); }
-    /** The shared window runtime supplies Home Space eligibility with its pulse. */
-    public void pulse(boolean home) { homeSpace = home; pulse(); }
+    /** Standalone rotation remains limited to Home Space. */
+    public void pulse(boolean home) { pulse(home, new int[0]); }
+    /** The shared runtime also supplies its explicitly marked overlay tasks. */
+    public void pulse(boolean home, int[] pins) {
+        if (pins == null || pins.length > 8) throw new IllegalArgumentException("Invalid pinned tasks");
+        int[] ids = pins.clone();
+        for (int id : ids) if (id <= 0) throw new IllegalArgumentException("Invalid pinned task");
+        pinnedTasks = ids;
+        homeSpace = home;
+        pulse();
+    }
+    private boolean canRotate(int taskId) {
+        if (homeSpace) return true;
+        for (int id : pinnedTasks) if (id == taskId) return true;
+        return false;
+    }
     public String getError() { return error; }
 
     public synchronized void setEnabled(boolean value) {
@@ -114,14 +131,45 @@ public final class RotationController {
         windows.add(new Window(info.taskId, field(decor, "taskSubspaceRepository"), root));
     }
 
+    /** Captions restored before the runtime starts will not call setupRootView again. */
+    public synchronized void bindExistingWindows(Object director) throws Exception {
+        if (stopping || captionScan != null) return;
+        captionOwner = (Handler) field(director, "mainHandler");
+        captionScan = () -> {
+            synchronized (RotationController.this) {
+                captionScan = null;
+                captionOwner = null;
+                if (stopping) return;
+                try {
+                    Object decorations = field(director, "windowDecorByTaskId");
+                    Class<?> captionType = director.getClass().getClassLoader().loadClass(
+                            "com.android.wm.shell.windowdecor.XrCaptionWindowDecoration");
+                    int count = ((Number) call(decorations, "size")).intValue();
+                    if (count < 0 || count > 128) throw new IllegalStateException("Invalid caption count");
+                    for (int i = 0; i < count; i++) {
+                        Object decor = call(decorations, "valueAt", new Class<?>[] {int.class}, i);
+                        if (!captionType.isInstance(decor)) continue;
+                        View view = (View) field(field(decor, "relayoutResult"), "mRootView");
+                        if (view != null) bindWindow(decor, view);
+                    }
+                } catch (Exception failure) { fail(failure); }
+            }
+        };
+        if (!captionOwner.post(captionScan)) {
+            captionScan = null;
+            captionOwner = null;
+            throw new IllegalStateException("Caption owner rejected discovery");
+        }
+    }
+
     /** Live 2D bindings scope boundary alignment and distance limits to ordinary app windows. */
     public synchronized int[] getBoundTaskIds() throws Exception {
-        if (stopping || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000) return new int[0];
+        if (stopping || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS) return new int[0];
         int[] ids = new int[windows.size()];
         int count = 0;
         for (Window window : windows) {
             View view = window.view.get();
-            if (view == null || !view.isAttachedToWindow()) continue;
+            if (view == null || !view.isAttachedToWindow() || !canRotate(window.taskId)) continue;
             Object task = call(window.repository, "getTaskSubspace", new Class<?>[] {int.class}, window.taskId);
             if (task != null && is2d(task)) ids[count++] = window.taskId;
         }
@@ -131,13 +179,14 @@ public final class RotationController {
     /** Reform callbacks can lack a looper; post rotation on the caption's owning view. */
     public synchronized void onGrab(Object transform, int id, int state, float[] hand,
             float[] parent, long sampledAt) throws Exception {
-        if (!enabled || !grabEnabled || stopping || !homeSpace) { grabStatus = "inactive"; return; }
+        if (!enabled || !grabEnabled || stopping) { grabStatus = "inactive"; return; }
         grabStatus = "not-bound";
         for (Window window : windows) {
             View view = window.view.get();
             if (view == null || !view.isAttachedToWindow()) { grabStatus = "caption-detached"; continue; }
             Object repository = window.repository;
             int taskId = window.taskId;
+            if (!canRotate(taskId)) continue;
             Object task = call(repository, "getTaskSubspace", new Class<?>[] {int.class}, taskId);
             if (task == null) continue;
             if (!transform.equals(call(task, "getNonSpatializedTransformNode")) || !is2d(task)) {
@@ -148,9 +197,9 @@ public final class RotationController {
             grabStatus = "queued";
             if (!view.post(() -> {
                 try {
-                    if (!enabled || !grabEnabled || stopping || !homeSpace
+                    if (!enabled || !grabEnabled || stopping || !canRotate(taskId)
                             || !view.isAttachedToWindow()
-                            || SystemClock.uptimeMillis() - heartbeat > 5000) return;
+                            || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS) return;
                     long age = SystemClock.uptimeMillis() - sampledAt;
                     if (age < 0 || age > 150) {
                         grabStatus = "stale";
@@ -211,17 +260,20 @@ public final class RotationController {
         int active = 0;
         for (Session session : sessions) if (!session.finished) active++;
         return "sessions=" + active + ",pending=" + pending.size()
-                + ",bindings=" + windows.size() + ",grab=" + grabStatus;
+                + ",bindings=" + windows.size() + ",pins=" + pinnedTasks.length + ",grab=" + grabStatus;
     }
 
     public synchronized boolean isRestored() {
-        if (!stopping || !pending.isEmpty()) return false;
+        if (!stopping || !pending.isEmpty() || captionScan != null) return false;
         for (Session session : sessions) if (!session.finished) return false;
         return true;
     }
 
     public synchronized void shutdown() {
         stopping = true;
+        if (captionScan != null) captionOwner.removeCallbacks(captionScan);
+        captionScan = null;
+        captionOwner = null;
         windows.clear();
         for (Pending item : pending) item.view.removeCallbacks(item);
         pending.clear();
@@ -234,7 +286,8 @@ public final class RotationController {
         if (view == null) return;
         Pending item = new Pending(menu, view);
         synchronized (this) {
-            if (stopping || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000) return;
+            if (stopping || (!homeSpace && pinnedTasks.length == 0)
+                    || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS) return;
             if (pending.size() >= 16) throw new IllegalStateException("Too many pending menus");
             pending.add(item);
         }
@@ -261,11 +314,11 @@ public final class RotationController {
     }
 
     private RotationMenu attachMenu(Object menu, View view, boolean sharedHost) throws Exception {
-        if (stopping || !enabled || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000
+        if (stopping || !enabled || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS
                 || root(menu) != view || !view.isAttachedToWindow()) return null;
         Object decor = field(menu, "parentDecor");
         RunningTaskInfo info = (RunningTaskInfo) field(decor, "mTaskInfo");
-        if (info.topActivity == null) return null;
+        if (info.topActivity == null || !canRotate(info.taskId)) return null;
         String pkg = info.topActivity.getPackageName();
         if (excluded(pkg)) return null;
         // A restored window can predate the delayed caption hook; its menu can bind the real caption.
@@ -304,7 +357,7 @@ public final class RotationController {
                 if (finished) return;
                 try {
                     Object task = currentTask();
-                    if (closing || stopping || !enabled || !homeSpace || SystemClock.uptimeMillis() - heartbeat > 5000
+                    if (closing || stopping || !enabled || !canRotate(taskId) || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS
                             || task == null || !is2d(task)) {
                         restore();
                         return;
@@ -371,8 +424,8 @@ public final class RotationController {
                 throw new IllegalArgumentException("Invalid rotation control value");
             }
             Object task = currentTask();
-            if (closing || stopping || !enabled || finished || !homeSpace || task == null || !is2d(task)
-                    || SystemClock.uptimeMillis() - heartbeat > 5000) {
+            if (closing || stopping || !enabled || finished || !canRotate(taskId) || task == null || !is2d(task)
+                    || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS) {
                 throw new IllegalStateException("Window is no longer eligible");
             }
             angles[axis] = degrees;

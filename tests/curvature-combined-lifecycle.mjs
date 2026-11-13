@@ -7,10 +7,17 @@ const source = readFileSync(process.argv[2], 'utf8').replace(/^import .*;\n/gm, 
 const withRotation = process.argv.includes('--rotation');
 const withBoundary = process.argv.includes('--boundary');
 const withHomePins = process.argv.includes('--home-pins');
+const borderlessDelay = process.argv.includes('--no-borderless-delay') ? 0 : 45000;
+const leaseMatch = /const SUPERVISOR_LEASE_MS = (\d+);/.exec(source);
+const supervisorLeaseMs = leaseMatch === null ? 2500 : Number(leaseMatch[1]);
+if (leaseMatch !== null) {
+    const flags = readFileSync(new URL('../modules/window-rotation/android/local/gxr/rotation/WindowFeatures.java', import.meta.url), 'utf8');
+    assert.equal(supervisorLeaseMs, Number(/SUPERVISOR_LEASE_MS = (\d+);/.exec(flags)[1]));
+}
 
 function session({homePinsUnavailable = false} = {}) {
     const timers = new Map(), intervals = new Map(), logs = [];
-    let attached = 0, pulses = 0, stopRequests = 0, restored = false, id = 0;
+    let attached = 0, pulses = 0, stopRequests = 0, restored = false, id = 0, clock = 0;
     let rotationRestored = false, rotationStops = 0, rotationError = '', home = true;
     let boundaryRestored = !withBoundary, boundaryStops = 0, boundaryDisposals = 0;
     let boundaryPermission = () => false;
@@ -18,10 +25,12 @@ function session({homePinsUnavailable = false} = {}) {
     let homePinsRestored = !withHomePins, homePinsStops = 0, homePinsDisposals = 0;
     let homePinsPermission = () => false;
     const rotationPulses = [];
+    let rotationPins = [], pinIds = [], pinGrab = false, grabPermission = () => false;
+    const grabPulses = [];
     const rotation = {
         setEnabled() {}, setGrabEnabled() {},
-        getBoundTaskIds: () => home ? [42] : [],
-        pulse: value => rotationPulses.push(value),
+        getBoundTaskIds: () => home ? [42] : rotationPins,
+        pulse(value, pins = []) { rotationPulses.push(value); rotationPins = Array.from(pins); },
         shutdown() { rotationStops++; },
         isRestored: () => rotationRestored,
         getError: () => rotationError,
@@ -48,7 +57,14 @@ function session({homePinsUnavailable = false} = {}) {
     };
     const context = {
         parseFeatureCommand, applyFeatureSettings,
-        installGrabRotation: () => ({setEnabled() {}, pulse() {}, stop() {}}),
+        installGrabRotation: (_Java, _controller, allowed) => {
+            grabPermission = allowed;
+            return {setEnabled() {}, pulse: value => grabPulses.push(value), stop() {}};
+        },
+        installImmersivePins: (_Java, _factory, allowed) => {
+            return {pulse() {}, stop() {}, dispose() {}, isRestored: () => true, getDiagnostics: () => ({}),
+                getRotationTaskIds: () => allowed() ? pinIds : [], canGrab: () => allowed() && pinGrab};
+        },
         installHomePins: (_Java, allowed) => {
             if (homePinsUnavailable) throw new Error('Home API unavailable');
             homePinsPermission = allowed;
@@ -63,6 +79,7 @@ function session({homePinsUnavailable = false} = {}) {
                 dispose() { assert.ok(boundaryRestored); boundaryDisposals++; }};
         },
         Java: {
+            array: (_type, values) => values,
             use(name) { assert.ok(classes[name], name); return classes[name]; },
             ClassFactory: {get: () => factory}, perform: cb => cb(), retain: value => value,
             choose(name, callbacks) {
@@ -70,7 +87,7 @@ function session({homePinsUnavailable = false} = {}) {
                 callbacks.onComplete();
             },
         },
-        rpc: {}, DEX_BASE64: '', console: {log: value => logs.push(value)},
+        rpc: {}, DEX_BASE64: '', console: {log: value => logs.push(value)}, testNow: () => clock,
         Memory: {alloc: () => ({})},
         Process: {id: 42, getModuleByName: () => ({getExportByName: () => ({})})},
         NativeFunction: function () { return () => 0; },
@@ -83,7 +100,7 @@ function session({homePinsUnavailable = false} = {}) {
             return {setEnabled() {}, pulse() { pulses++; }, stop() { stopRequests++; }, isStopped: () => restored};
         },
     };
-    runInNewContext(source + '\ninstallNative = () => {}; nowMs = () => 0; this.pollAgent = poll;', context);
+    runInNewContext(source + '\ninstallNative = () => {}; nowMs = () => testNow(); this.pollAgent = poll;', context);
     return {context, timers, intervals, logs, attached: () => attached, pulses: () => pulses,
         stopRequests: () => stopRequests, restored() { restored = true; }, rotationPulses,
         rotationStops: () => rotationStops, restoreRotation() { rotationRestored = true; },
@@ -96,13 +113,50 @@ function session({homePinsUnavailable = false} = {}) {
         restoreHomePins() { homePinsRestored = true; },
         homePinsStops: () => homePinsStops, homePinsDisposals: () => homePinsDisposals,
         homePinsAllowed: () => homePinsPermission(),
+        pins(ids, allowed) { pinIds = ids; pinGrab = allowed; },
+        grabAllowed: () => grabPermission(), grabPulses,
+        setClock(value) { clock = value; },
     };
+}
+
+const expiry = session();
+await expiry.context.rpc.exports.init();
+expiry.context.rpc.exports.onFridaStdin('pulse');
+if (supervisorLeaseMs === 5000) {
+    expiry.setClock(2910);
+    expiry.context.pollAgent();
+    assert.ok(!expiry.logs.some(line => line.startsWith('GXR_CURVATURE_STOPPING')), 'busy launch must not quarantine');
+}
+expiry.setClock(supervisorLeaseMs - 1);
+expiry.context.pollAgent();
+assert.ok(!expiry.logs.some(line => line.startsWith('GXR_CURVATURE_STOPPING')));
+expiry.setClock(supervisorLeaseMs);
+expiry.context.pollAgent();
+const expired = expiry.logs.find(line => line.startsWith('GXR_CURVATURE_STOPPING '));
+assert.ok(expired, 'a missing supervisor must still expire at the configured deadline');
+const expiredData = JSON.parse(expired.slice('GXR_CURVATURE_STOPPING '.length));
+assert.equal(expiredData.reason, 'supervisor pulse expired');
+if (source.includes('let supervisorPulses = 0;')) {
+    assert.equal(expiredData.supervisorPulses, 1);
+    assert.equal(expiredData.pulseAgeMs, supervisorLeaseMs);
+}
+if (leaseMatch !== null) {
+    const renewed = session();
+    await renewed.context.rpc.exports.init();
+    renewed.context.rpc.exports.onFridaStdin('pulse');
+    renewed.setClock(2910); renewed.context.rpc.exports.onFridaStdin('pulse');
+    renewed.context.pollAgent();
+    assert.ok(!renewed.logs.some(line => line.startsWith('GXR_CURVATURE_STOPPING')));
+    renewed.setClock(2910 + supervisorLeaseMs); renewed.context.pollAgent();
+    const stop = JSON.parse(renewed.logs.find(line => line.startsWith('GXR_CURVATURE_STOPPING ')).slice('GXR_CURVATURE_STOPPING '.length));
+    assert.equal(stop.pulseAgeMs, supervisorLeaseMs);
+    assert.equal(stop.maxSupervisorGapMs, 2910);
 }
 
 const cancelled = session();
 await cancelled.context.rpc.exports.init();
 assert.equal(cancelled.attached(), 0);
-assert.equal([...cancelled.timers.values()][0].delay, 45000);
+assert.equal([...cancelled.timers.values()][0].delay, borderlessDelay);
 const pending = [...cancelled.timers.values()][0].cb;
 cancelled.context.rpc.exports.onFridaStdin('stop');
 assert.equal(cancelled.timers.size, 0);
@@ -166,7 +220,29 @@ if (withBoundary) assert.equal(running.boundaryDisposals(), 1);
 if (withHomePins) assert.equal(running.homePinsDisposals(), 1);
 assert.equal(running.intervals.size, 0);
 assert.ok(running.logs.some(line => line.startsWith('GXR_CURVATURE_STOPPED')));
-console.log('PASS: 45-second delayed attach, cancelled startup, pulses, and restoration before detach');
+console.log(`PASS: ${borderlessDelay} ms queued attach, cancelled startup, pulses, and restoration before detach`);
+if (source.includes('let immersivePins = null;')) {
+    const pins = session();
+    await pins.context.rpc.exports.init();
+    pins.context.rpc.exports.onFridaStdin('pulse');
+    pins.context.rpc.exports.onFridaStdin('pins-on');
+    pins.leaveHome(); pins.pins([51], true); pins.context.pollAgent();
+    assert.equal(pins.boundaryAllowed(51), true);
+    assert.equal(pins.boundaryAllowed(42), false);
+    assert.equal(pins.grabAllowed(), true);
+    assert.equal(pins.grabPulses.at(-1), true);
+    pins.pins([51], false); pins.context.pollAgent();
+    assert.equal(pins.boundaryAllowed(51), true, 'transient focus changes retain the pinned pose');
+    assert.equal(pins.grabAllowed(), false);
+    assert.equal(pins.grabPulses.at(-1), false);
+    pins.pins([], false); pins.context.pollAgent();
+    assert.equal(pins.boundaryAllowed(51), false);
+    pins.setClock(supervisorLeaseMs); assert.equal(pins.grabAllowed(), false);
+    pins.context.rpc.exports.onFridaStdin('stop');
+    pins.restored(); pins.restoreRotation(); pins.restoreBoundary(); pins.restoreHomePins(); pins.context.pollAgent();
+    assert.equal(pins.intervals.size, 0);
+    console.log('PASS: immersive pins alone authorize wrist/resize boundaries without widening Home curvature or VR focus');
+}
 if (withRotation) {
     const failed = session();
     await failed.context.rpc.exports.init();

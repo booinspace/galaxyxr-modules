@@ -16,6 +16,7 @@ export function installBorderless(Java, fail, CaptionVisibility, initiallyEnable
     let enabled = initiallyEnabled;
     let rimRestoreError = null;
     let setRim;
+    let captionDiscoveryDone = rotationController === null;
 
     function updateRims() {
         const Updates = Java.use('android.graphics.CPM$NodeUpdates');
@@ -160,6 +161,15 @@ export function installBorderless(Java, fail, CaptionVisibility, initiallyEnable
         };
         hooks.push(dispatchHover);
 
+        if (rotationController !== null) Java.choose('com.android.wm.shell.windowdecor.XrCaptionWindowDecorDirector', {
+            onMatch(director) {
+                if (stopped) return;
+                try { rotationController.bindExistingWindows(director); }
+                catch (error) { report('GXR_BORDERLESS_FATAL ' + String(error)); }
+            },
+            onComplete() { captionDiscoveryDone = true; },
+        });
+
         // The shared monotonic supervisor owns expiry; wall time advances during sleep.
         report('GXR_BORDERLESS_READY');
         return {
@@ -172,7 +182,7 @@ export function installBorderless(Java, fail, CaptionVisibility, initiallyEnable
             },
             stop() { stop('curvature supervisor stopped'); },
             isStopped() {
-                if (!stopped || restored) return restored;
+                if (!stopped || !captionDiscoveryDone || restored) return restored;
                 if (rimRestoreError !== null) return false;
                 let pending = false;
                 for (const ticket of captions) {

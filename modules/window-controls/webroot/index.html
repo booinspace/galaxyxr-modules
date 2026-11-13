@@ -8,6 +8,7 @@
   <title>Window controls</title>
   <link rel="stylesheet" href="style.css">
   <script src="settings.js" defer></script>
+  <script src="pins.js" defer></script>
 </head>
 <body>
   <main>
@@ -28,6 +29,17 @@
     <p class="hint">Home supports up to 50 pinned apps while this module is running. Above 10, scroll vertically through the same five-column tile grid.</p>
     <p class="hint">Controls wait until SystemUI is 90 seconds old; borderless attaches 45 seconds later. Reopen app windows afterward.</p>
     <p class="hint">Enabled Window Controls starts automatically after a KernelSU GXR Soft restart. Action remains available for settings and logs.</p>
+    <section aria-labelledby="pins-heading">
+      <h2 id="pins-heading">Immersive app pins · experimental</h2>
+      <p>Keep an ordinary Android app over Steam Link or another immersive app. Close its existing window before the first pin.</p>
+      <label for="pin-package">App package</label>
+      <input id="pin-package" type="text" value="app.symfonik.music.player" autocapitalize="none" spellcheck="false" maxlength="200">
+      <div class="actions">
+        <button id="pin-app">Pin app</button><button id="pin-minimize">Minimise pinned app</button>
+        <button id="pin-restore">Restore pinned app</button><button id="pin-close-all">Close all pinned windows</button>
+      </div>
+      <p class="hint">Look away to fade; look back for full opacity. Tracking loss keeps the app fully visible. Normal music playback is controlled by the app.</p>
+    </section>
     <div class="actions"><button id="start" disabled>Start window controls</button><button id="logs" disabled>Export logs</button></div>
     <p class="hint">If the runtime is quarantined, use the existing full reboot recovery procedure before starting it.</p>
   </main>

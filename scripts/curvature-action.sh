@@ -8,7 +8,8 @@ action|start)
       [ ! -f /dev/ksu-restart-stage/busy ] &&
       [ ! -d "$STATE" ] && [ ! -d /dev/gxr-window-curvature-launch ] &&
       ! sh "$MODDIR/restart.sh" needs-restart; then
-    nohup sh "$MODDIR/control.sh" run >> "$MODDIR/service.log" 2>&1 </dev/null &
+    # WebUI root inherits the manager's freezer cgroup; KernelSU su leaves that group.
+    nohup /system/bin/su -c "exec sh \"$MODDIR/control.sh\" run" >> "$MODDIR/service.log" 2>&1 </dev/null &
     count=0
     while [ "$count" -lt 30 ]; do
       [ ! -f "$MODDIR/disable" ] || break

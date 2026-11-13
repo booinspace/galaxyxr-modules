@@ -19,6 +19,9 @@ IMPRESS = "ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42"
 FRAMEWORK = "6ec625a07d94e3e50d82eea14bcec05425de303a62a512e6b82ae57881c46ad7"
 ART = "afc9dde61f50e1e2b085c886e2bad7df98c433b28e0f01041221e1d138c321c5"
 CMC_PATCH_SHA = "354bec3059c53cf9f83d3d8f3dcc81417654c0a2620bfac188c52e0092ba84bd"
+QUICK_PATCH_SHA = "bb32f1de5a6d30bf82977c29af9c673a3550f8d0289b519b5bc0fd33fd0a56ca"
+DISPATCH_PATCH_SHA = "441a84e4b7fb5462eafd5e8b712fb6fbbe43603515cd6dd6ff98b8e458803cde"
+SUPERVISOR_LEASE_MS = 5000
 
 
 def replace(path: Path, old: str, new: str) -> None:
@@ -38,9 +41,15 @@ def check_gxr_installer_payload(package: Path) -> None:
 
 
 def patch_art_cmc(work: Path, module: Path) -> None:
-    """Keep Frida's cloned methods visible to this firmware's moving GC."""
+    """Apply the exact ART bridge guards and validate their cleanup transaction."""
     shutil.copyfile(ROOT / "scripts/curvature/frida-java-bridge-cmc.patch",
                     module / "agent/frida-java-bridge-cmc.patch")
+    shutil.copyfile(ROOT / "scripts/curvature/frida-java-bridge-quick-code.patch",
+                    module / "agent/frida-java-bridge-quick-code.patch")
+    shutil.copyfile(ROOT / "tests/bridge-quick-code.test.mjs", module / "agent/check-quick-code.mjs")
+    shutil.copyfile(ROOT / "scripts/curvature/frida-java-bridge-dispatch.patch",
+                    module / "agent/frida-java-bridge-dispatch.patch")
+    shutil.copyfile(ROOT / "tests/bridge-dispatch.test.py", module / "agent/check-dispatch.py")
     builder = work / "tools/build_window_curvature.py"
     replace(builder, "        diagnostics = []",
             "        patch = MODULE / 'agent/frida-java-bridge-cmc.patch'\n"
@@ -48,6 +57,21 @@ def patch_art_cmc(work: Path, module: Path) -> None:
             "            raise ValueError('CMC bridge patch integrity mismatch')\n"
             "        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=bridge_dir, check=True)\n"
             "        subprocess.run(['git', 'apply', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        patch = MODULE / 'agent/frida-java-bridge-quick-code.patch'\n"
+            f"        if hashlib.sha256(patch.read_bytes()).hexdigest() != {QUICK_PATCH_SHA!r}:\n"
+            "            raise ValueError('Quick-code bridge patch integrity mismatch')\n"
+            "        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        subprocess.run(['git', 'apply', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        subprocess.run(['node', str(agent / 'check-quick-code.mjs'),\n"
+            "                        str(bridge_dir / 'lib/android.js'),\n"
+            "                        str(bridge_dir / 'lib/class-factory.js')], check=True)\n"
+            "        patch = MODULE / 'agent/frida-java-bridge-dispatch.patch'\n"
+            f"        if hashlib.sha256(patch.read_bytes()).hexdigest() != {DISPATCH_PATCH_SHA!r}:\n"
+            "            raise ValueError('Dispatch bridge patch integrity mismatch')\n"
+            "        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        subprocess.run(['git', 'apply', str(patch)], cwd=bridge_dir, check=True)\n"
+            "        subprocess.run([sys.executable, str(agent / 'check-dispatch.py'),\n"
+            "                        str(bridge_dir / 'lib/android.js')], check=True)\n"
             "        diagnostics = []")
     replace(builder, "        'bridgeVersion': '7.0.13', 'bridgeSha512': BRIDGE_SHA512,",
             "        'bridgeVersion': '7.0.13', 'bridgeSha512': BRIDGE_SHA512,\n"
@@ -56,6 +80,18 @@ def patch_art_cmc(work: Path, module: Path) -> None:
             "            'commit': 'fcdd7186467e8c6dfdcef888208807c9fc0424db',\n"
             f"            'sha256': {CMC_PATCH_SHA!r},\n"
             "            'localChange': 'Fail before cloning if the CMC allocator is unavailable',\n"
+            "        },\n"
+            "        'bridgeQuickCodePatch': {\n"
+            "            'author': 'booinspace',\n"
+            f"            'sha256': {QUICK_PATCH_SHA!r},\n"
+            "            'change': 'Suspend ART quick-code writes and retain retired Java callbacks through agent cleanup',\n"
+            "        },\n"
+            "        'bridgeDispatchPatch': {\n"
+            "            'author': 'Kolektori; atomic publication corrections by booinspace',\n"
+            "            'url': 'https://github.com/frida-packages/frida-java-bridge/pull/401',\n"
+            "            'commit': 'dde975ddd6cc8ea8e8667d9a6f5629b22ff16a1c',\n"
+            f"            'sha256': {DISPATCH_PATCH_SHA!r},\n"
+            "            'localChange': 'Atomic head publication; complete deletion snapshots before publication',\n"
             "        },")
     replace(module / "THIRD_PARTY.md", "bundled unmodified source through Frida Compiler.",
             "bundled through Frida Compiler with the CMC allocation patch below.")
@@ -67,6 +103,18 @@ def patch_art_cmc(work: Path, module: Path) -> None:
             "Local addition: refuse CMC cloning if its allocator is unavailable.\n"
             "The original npm source and complete local patch are included;\n"
             "the patch is bin/source/agent/frida-java-bridge-cmc.patch.\n")
+        notices.write(
+            "\nART quick-code patch transaction by booinspace.\n"
+            "Suspends ART threads while entry-point instructions are written or restored.\n"
+            "Retains retired JNI callbacks through script teardown for callers still in flight.\n"
+            "Race background: https://github.com/frida-packages/frida-java-bridge/pull/401\n"
+            "Complete patch: bin/source/agent/frida-java-bridge-quick-code.patch.\n")
+        notices.write(
+            "\nLock-free ART dispatch by Kolektori:\n"
+            "https://github.com/frida-packages/frida-java-bridge/pull/401\n"
+            "Upstream commit: dde975ddd6cc8ea8e8667d9a6f5629b22ff16a1c.\n"
+            "Local corrections by booinspace: atomically publish completed snapshots, including deletion.\n"
+            "Complete patch: bin/source/agent/frida-java-bridge-dispatch.patch.\n")
 
 
 def integrate_rotation(module: Path) -> None:
@@ -118,6 +166,11 @@ def integrate_rotation(module: Path) -> None:
             "                    + (rotationControls == null ? 0 : rotationControls.getRequiredHeight());")
     replace(menu, "        controls.close();",
             "        if (rotationControls != null) rotationControls.close();\n        controls.close();")
+    ticket = module / "android/local/gxr/curvature/MenuAttachmentTicket.java"
+    replace(ticket, 'if (root.getWindowToken() == null) throw new IllegalStateException("Menu closed before attachment");',
+            'if (root.getWindowToken() == null) { closed = true; return; }')
+    replace(ticket, '|| "restore-pending".equals(session.getStatus())) return;',
+            '|| "restore-pending".equals(session.getStatus())) { closed = true; return; }')
 
     agent = module / "agent/main.js"
     replace(agent, "let borderless = null;", "let borderless = null;\nlet rotation = null;")
@@ -447,16 +500,292 @@ def integrate_autostart(module: Path) -> None:
             "After a full reboot, enable and tap Action to start. Action also exports logs.",
             "Enabled modules start after GXR Soft restart. Action opens settings and exports logs.")
     ready = "      printf '%s\\n' 'RUNNING - supervised, independent Home Space windows' > \"$STATE/status\""
+    replace(module / "control.sh", "    if grep -q '^GXR_CURVATURE_READY ' \"$LOG\"; then",
+            "    if [ \"$ready\" -eq 0 ] && grep -q '^GXR_CURVATURE_READY ' \"$LOG\"; then")
     replace(module / "control.sh", ready, ready + '\n'
             '      if [ "${GXR_WINDOW_AUTOSTART:-0}" = 1 ]; then\n'
-            '        (umask 077\n'
+            '        (exec 3>&-\n'
+            '         umask 077\n'
             '         report=$(mktemp /data/local/tmp/gxr-window-autostart.XXXXXX) || exit 1\n'
+            '         trap \'rm -f "$report"\' EXIT\n'
             '         printf "AUTO_START_RUNNING\\nversion=%s\\ntarget=%s\\n" '
             '"$(sed -n \'s/^version=//p\' "$MODDIR/module.prop")" "$target_identity" > "$report" &&\n'
             '         chown 2000:2000 "$report" && chmod 600 "$report" &&\n'
-            '         mv -f "$report" /data/local/tmp/gxr-window-autostart.txt\n'
-            '        ) || echo "AUTO_START_REPORT_FAILED - runtime remains active."\n'
+            '         allowed && owns_state && kill -0 "$injector_pid" 2>/dev/null &&\n'
+            '         [ "$(identity "$target")" = "$target_identity" ] &&\n'
+            '         mv -f "$report" /data/local/tmp/gxr-window-autostart.txt ||\n'
+            '           echo "AUTO_START_REPORT_FAILED - runtime remains active."\n'
+            '        ) &\n'
             '      fi')
+    replace(module / "control.sh",
+            "start_time() { sed 's/.*) //' \"/proc/$1/stat\" 2>/dev/null | awk '{print $20}'; }",
+            'start_time() {\n'
+            '  local stat_line=\n'
+            '  IFS= read -r stat_line < "/proc/$1/stat" 2>/dev/null || [ -n "$stat_line" ] || return 1\n'
+            '  set -- ${stat_line##*) }\n'
+            '  [ "$#" -ge 20 ] || return 1\n'
+            '  shift 19\n'
+            '  case "$1" in \'\'|*[!0-9]*) return 1 ;; esac\n'
+            '  printf \'%s\' "$1"\n'
+            '}')
+    replace(module / "control.sh",
+            'identity() { printf \'%s:%s:%s\' "$(cat /proc/sys/kernel/random/boot_id)" "$1" "$(start_time "$1")"; }',
+            'identity() {\n'
+            '  local boot=\n'
+            '  IFS= read -r boot < /proc/sys/kernel/random/boot_id || [ -n "$boot" ] || return 1\n'
+            '  printf \'%s:%s:%s\' "$boot" "$1" "$(start_time "$1")"\n'
+            '}')
+
+
+def integrate_immersive_pins(work: Path, module: Path) -> None:
+    """Add opt-in native overlay launches and eye-only panel fading to one injector."""
+    sources = ROOT / "modules/window-controls/android/local/gxr/pins"
+    destination = module / "android/local/gxr/pins"
+    destination.mkdir(parents=True)
+    for source in sorted(sources.glob("*.java")):
+        shutil.copyfile(source, destination / source.name)
+    shutil.copyfile(ROOT / "scripts/curvature-pins-agent.mjs",
+                    module / "agent/curvature-pins-agent.mjs")
+    shutil.copyfile(ROOT / "scripts/curvature-pins-scrim.mjs",
+                    module / "agent/curvature-pins-scrim.mjs")
+    shutil.copyfile(ROOT / "scripts/curvature-pins.sh", module / "pins.sh")
+    replace(module / "module.prop", "version=0.1.30-azj2", "version=0.1.55-azj2-experimental")
+    replace(module / "module.prop", "versionCode=131", "versionCode=156")
+    replace(module / "module.prop", "description=AZJ2 window controls with",
+            "description=Experimental AZJ2 window controls with opt-in immersive app pins,")
+    pins = module / "firmware.sha256"
+    previous = dict((line.split("  ", 1)[1], line.split("  ", 1)[0])
+                    for line in pins.read_text().splitlines())
+    services = "ca2d7cdb6a549b7bdbef2c0ef1cab025b2b058f724fc4710911aedb7b9e71555"
+    expected = {**previous, "/system/framework/services.jar": services}
+    pins.write_text(pins.read_text() + f"{services}  /system/framework/services.jar\n")
+    replace(work / "tools/check_window_curvature_package.py",
+            f"assert pins == {previous!r}", f"assert pins == {expected!r}")
+    replace(work / "tools/build_window_curvature.py",
+            "'boot-recovery.sh', 'restart.sh', 'features.sh',",
+            "'boot-recovery.sh', 'restart.sh', 'features.sh', 'pins.sh',")
+    installer = module / "customize.sh"
+    replace(installer, "uninstall.sh features.sh recovery.sh", "uninstall.sh features.sh pins.sh recovery.sh")
+    with installer.open("a") as script:
+        script.write('\nprevious_pin=/data/adb/modules/gxr_window_curvature/pin-app.conf\n'
+                     'if [ -f "$previous_pin" ] && [ "$MODPATH" != /data/adb/modules/gxr_window_curvature ]; then\n'
+                     '  cp "$previous_pin" "$MODPATH/pin-app.conf" || abort "Cannot retain pinned app selection"\n'
+                     '  set_perm "$MODPATH/pin-app.conf" 0 0 0600\nfi\n')
+    replace(module / "control.sh", "off)\n",
+            'off)\n'
+            '  if [ -f "$MODDIR/pin-app.conf" ]; then\n'
+            '    sh "$MODDIR/pins.sh" close-all || { echo "Pinned app cleanup failed; stop pending."; exit 1; }\n'
+            '  fi\n')
+    replace(module / "control.sh", '  printf \'%s\\n\' "$$" > "$STATE/supervisor-pid"',
+            '  printf \'%s\\n\' "$$" > "$STATE/supervisor-pid"\n'
+            '  echo "SUPERVISOR_CGROUP=$(sed -n \'s/^0:://p\' /proc/$$/cgroup)"')
+    agent = module / "agent/main.js"
+    for old, new in [
+        ("        return new Promise((resolve, reject) => Java.perform(() => {",
+         "        log('INIT_PHASE', {stage: 'enter-java'});\n        return new Promise((resolve, reject) => Java.perform(() => {"),
+        ("                const bytes = Java.use('android.util.Base64').decode(DEX_BASE64, 0);",
+         "                log('INIT_PHASE', {stage: 'java-attached'});\n                const bytes = Java.use('android.util.Base64').decode(DEX_BASE64, 0);"),
+        ("                Session = factory.use('local.gxr.curvature.CurvatureSession');",
+         "                log('INIT_PHASE', {stage: 'helper-loaded'});\n                Session = factory.use('local.gxr.curvature.CurvatureSession');"),
+        ("                Java.choose('com.android.systemui.xr.wm.shell.mixedreality.MixedRealityStateObserver', {",
+         "                log('INIT_PHASE', {stage: 'find-observer'});\n                Java.choose('com.android.systemui.xr.wm.shell.mixedreality.MixedRealityStateObserver', {"),
+        ("                        Java.choose('com.android.systemui.xr.wm.shell.subspace.TaskSubspaceRepositoryImpl', {",
+         "                        log('INIT_PHASE', {stage: 'find-repository'});\n                        Java.choose('com.android.systemui.xr.wm.shell.subspace.TaskSubspaceRepositoryImpl', {"),
+        ("                            try { homePins = installHomePins(Java,",
+         "                            log('INIT_PHASE', {stage: 'install-home-hooks'});\n                            try { homePins = installHomePins(Java,"),
+        ("                            installNative();",
+         "                            log('INIT_PHASE', {stage: 'install-window-hooks'});\n                            installNative();"),
+    ]:
+        replace(agent, old, new)
+    replace(agent, "import {installHomePins} from './curvature-home-pins-agent.mjs';",
+            "import {installHomePins} from './curvature-home-pins-agent.mjs';\n"
+            "import {installImmersivePins} from './curvature-pins-agent.mjs';")
+    replace(agent, "let homePins = null;",
+            "let homePins = null;\nlet immersivePins = null;\n"
+            "let pinsRequested = false;\nlet pinFactory = null;")
+    replace(agent, "                            grab = installGrabRotation(Java, rotation, permitted, nowMs);",
+            "                            grab = installGrabRotation(Java, rotation,\n"
+            "                                () => !stopped && nowMs() - lastSupervisor < 2500\n"
+            "                                    && (homeSpace() || (immersivePins !== null && immersivePins.canGrab())), nowMs);")
+    replace(agent, "                rotation.pulse(home);",
+            "                rotation.pulse(home, Java.array('int', immersivePins === null ? [] : immersivePins.getRotationTaskIds()));")
+    replace(agent, "                if (grab !== null) grab.pulse(home);",
+            "                if (grab !== null) grab.pulse(home || (immersivePins !== null && immersivePins.canGrab()));")
+    replace(agent, "let lastSupervisor = -Infinity;",
+            "let lastSupervisor = -Infinity;\nlet supervisorPulses = 0;")
+    replace(agent, "if (command === 'pulse' && !stopped) lastSupervisor = nowMs();",
+            "if (command === 'pulse' && !stopped) { lastSupervisor = nowMs(); supervisorPulses++; }")
+    replace(agent, "log('STOPPING', {reason});",
+            "log('STOPPING', {reason, pulseAgeMs: nowMs() - lastSupervisor, supervisorPulses});")
+    replace(agent, "    try { if (homePins !== null) homePins.stop(); }",
+            "    try { if (immersivePins !== null) immersivePins.stop(); }\n"
+            "    catch (error) { log('PINS_RESTORE_ERROR', {error: String(error)}); }\n"
+            "    try { if (homePins !== null) homePins.stop(); }")
+    replace(agent, "                            refreshFeatures();",
+            "                            pinFactory = factory;\n"
+            "                            refreshFeatures();")
+    replace(agent, "        const values = parseFeatureCommand(command);",
+            "        if (command === 'pins-on') {\n"
+            "            if (!stopped && !pinsRequested && pinFactory !== null) {\n"
+            "                pinsRequested = true;\n"
+            "                Java.perform(() => {\n"
+            "                    try { immersivePins = installImmersivePins(Java, pinFactory,\n"
+            "                        () => !stopped && nowMs() - lastSupervisor < 2500, nowMs); }\n"
+            "                    catch (error) { console.log('GXR_PINS_ERROR ' + String(error)); }\n"
+            "                });\n"
+            "            }\n            return;\n        }\n"
+            "        const values = parseFeatureCommand(command);")
+    replace(module / "control.sh", "    printf 'pulse\\n' >&3 || { failed=1; break; }",
+            "    printf 'pulse\\n' >&3 || { failed=1; break; }\n"
+            '    if [ "$((count % 10))" -eq 0 ] && read -r pulse_uptime unused < /proc/uptime; then\n'
+            '      echo "SUPERVISOR_PULSE count=$count uptime=$pulse_uptime"\n'
+            '    fi')
+    replace(agent, "            if (!stopped && borderless !== null) borderless.pulse();",
+            "            if (!stopped && borderless !== null) borderless.pulse();\n"
+            "            if (!stopped && immersivePins !== null) immersivePins.pulse();")
+    replace(agent, "                (homePins === null || homePins.isRestored())) {",
+            "                (homePins === null || homePins.isRestored()) &&\n"
+            "                (immersivePins === null || immersivePins.isRestored())) {")
+    replace(agent, "                if (homePins !== null) homePins.dispose();",
+            "                if (immersivePins !== null) immersivePins.dispose();\n"
+            "                if (homePins !== null) homePins.dispose();")
+    replace(agent, "log('STATE', {homePins:",
+            "log('STATE', {immersivePins: immersivePins === null ? null : immersivePins.getDiagnostics(), homePins:")
+
+
+def integrate_pill_pin(module: Path) -> None:
+    """Reuse the existing caption host and supervised root launcher for its Pin row."""
+    menu = module / "android/local/gxr/curvature/MenuAttachment.java"
+    replace(menu, "    private RotationMenu rotationControls;",
+            "    private RotationMenu rotationControls;\n    private local.gxr.pins.PinMenu pinControls;")
+    replace(menu, "            if (rotationController != null) rotationControls = rotationController.attachMenu(menu, root);",
+            "            if (rotationController != null) rotationControls = rotationController.attachMenu(menu, root);\n"
+            "            pinControls = local.gxr.pins.PinMenu.attach(root, task);")
+    replace(menu, "int expanded = oldHeight + curvatureHeight",
+            "int expanded = oldHeight + curvatureHeight + (pinControls == null ? 0 : pinControls.getRequiredHeight())")
+    replace(menu, "        if (rotationControls != null) rotationControls.close();",
+            "        if (pinControls != null) pinControls.close();\n"
+            "        if (rotationControls != null) rotationControls.close();")
+    agent = module / "agent/main.js"
+    replace(agent, "let pinsRequested = false;\nlet pinFactory = null;",
+            "let pinsRequested = false;\nlet pinFactory = null;\nlet PinMenu = null;\nlet pinMenuToken = '';")
+    replace(agent, "                            pinFactory = factory;",
+            "                            pinFactory = factory;\n"
+            "                            PinMenu = factory.use('local.gxr.pins.PinMenu');")
+    replace(agent, "            if (!stopped && immersivePins !== null) immersivePins.pulse();",
+            "            if (!stopped && immersivePins !== null) immersivePins.pulse();\n"
+            "            if (!stopped && PinMenu !== null && pinMenuToken) {\n"
+            "                PinMenu.setToken(pinMenuToken);\n"
+            "                PinMenu.pulse();\n"
+            "                const request = String(PinMenu.pollRequest());\n"
+            "                if (request) console.log('GXR_PILL_PIN_REQUEST ' + request);\n"
+            "            }")
+    replace(agent, "    try { if (immersivePins !== null) immersivePins.stop(); }",
+            "    try { if (PinMenu !== null) PinMenu.shutdown(); }\n"
+            "    catch (error) { log('PIN_MENU_RESTORE_ERROR', {error: String(error)}); }\n"
+            "    try { if (immersivePins !== null) immersivePins.stop(); }")
+    replace(agent, "        if (command === 'pins-on') {",
+            "        const pinToken = /^pin-token ([0-9a-f]{32})$/.exec(command);\n"
+            "        if (pinToken && !stopped) { pinMenuToken = pinToken[1]; return; }\n"
+            "        const pinResult = /^pin-result ([0-9]{1,16}) ([0-9]{1,3})$/.exec(command);\n"
+            "        if (pinResult && !stopped && PinMenu !== null) {\n"
+            "            Java.perform(() => PinMenu.complete(Number(pinResult[1]), Number(pinResult[2]) === 0));\n"
+            "            return;\n"
+            "        }\n"
+            "        if (command === 'pins-on') {")
+    control = module / "control.sh"
+    replace(control, "  count=0\n  ready=0\n  while allowed; do",
+            "  pin_menu_token=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \\n')\n"
+            "  [ \"${#pin_menu_token}\" -eq 32 ] || fail 'Cannot initialise pin menu channel'\n"
+            "  printf '%s\\n' \"$pin_menu_token\" > \"$STATE/pin-menu-token\"\n"
+            "  count=0\n  ready=0\n  while allowed; do")
+    replace(control, '    selected=$(sh "$MODDIR/features.sh" wire) || { failed=1; break; }',
+            '    printf "pin-token %s\\n" "$pin_menu_token" >&3 || { failed=1; break; }\n'
+            '    if [ -z "$pin_menu_pid" ] || ! kill -0 "$pin_menu_pid" 2>/dev/null; then\n'
+            '      [ -z "$pin_menu_pid" ] || wait "$pin_menu_pid" || { failed=1; break; }\n'
+            '      # Settings and menu reads must not delay the supervisor lease.\n'
+            '      (selected=$(sh "$MODDIR/features.sh" wire 3>&-) || exit 1\n'
+            '       printf "%s\\n" "$selected" >&3 || exit 1\n'
+            '       [ ! -f "$MODDIR/pin-app.conf" ] || printf "pins-on\\n" >&3 || exit 1\n'
+            '       exec sh "$MODDIR/pins.sh" menu-poll 3>&3) &\n'
+            '      pin_menu_pid=$!\n'
+            '    fi')
+    replace(control, '    printf "%s\\n" "$selected" >&3 || { failed=1; break; }\n', '')
+    replace(control, '  injector_pid=\n', '  pin_menu_pid=\n  injector_pid=\n')
+    replace(control, '    planned_restored=0\n',
+            '    planned_restored=0\n'
+            '    rm -f "$STATE/pin-menu-token"\n'
+            '    if [ -n "$pin_menu_pid" ]; then\n'
+            '      kill -TERM "$pin_menu_pid" 2>/dev/null || true\n'
+            '      wait "$pin_menu_pid" 2>/dev/null || true\n'
+            '      pin_menu_pid=\n'
+            '    fi\n')
+    replace(control,
+            'rm -f "$STATE/control" "$STATE/status" "$STATE/supervisor-pid" "$STATE/injector-pid" "$STATE/module-path" "$STATE/target"',
+            'rm -f "$STATE/control" "$STATE/status" "$STATE/supervisor-pid" "$STATE/injector-pid" "$STATE/module-path" "$STATE/target" '
+            '"$STATE/pin-menu-token" "$STATE/last-pin-menu-request"')
+
+
+def integrate_supervisor_lease(module: Path) -> None:
+    """Give busy app launches bounded headroom without widening tracking freshness."""
+    agent = module / "agent/main.js"
+    source = agent.read_text()
+    old = "nowMs() - lastSupervisor < 2500"
+    if source.count(old) != 4:
+        raise ValueError("Unexpected combined supervisor predicates")
+    agent.write_text(source.replace(old, "nowMs() - lastSupervisor < SUPERVISOR_LEASE_MS"))
+    replace(agent, "now - lastSupervisor >= 2500", "now - lastSupervisor >= SUPERVISOR_LEASE_MS")
+    replace(agent, "let supervisorPulses = 0;",
+            f"const SUPERVISOR_LEASE_MS = {SUPERVISOR_LEASE_MS};\n"
+            "let supervisorPulses = 0;\nlet maxSupervisorGapMs = 0;")
+    replace(agent, "if (command === 'pulse' && !stopped) { lastSupervisor = nowMs(); supervisorPulses++; }",
+            "if (command === 'pulse' && !stopped) {\n"
+            "            const stamp = nowMs(), gap = stamp - lastSupervisor;\n"
+            "            if (Number.isFinite(gap) && gap >= 0) maxSupervisorGapMs = Math.max(maxSupervisorGapMs, gap);\n"
+            "            lastSupervisor = stamp; supervisorPulses++;\n        }")
+    replace(agent, "pulseAgeMs: nowMs() - lastSupervisor, supervisorPulses}",
+            "pulseAgeMs: nowMs() - lastSupervisor, supervisorPulses, maxSupervisorGapMs}")
+    replace(agent, "log('STATE', {immersivePins:",
+            "log('STATE', {supervisor: {leaseMs: SUPERVISOR_LEASE_MS, pulses: supervisorPulses,\n"
+            "                    ageMs: nowMs() - lastSupervisor, maxGapMs: maxSupervisorGapMs}, immersivePins:")
+    session = module / "java/local/gxr/curvature/CurvatureSession.java"
+    replace(session, "new CurvatureSession(taskId, node, 3000, true)",
+            f"new CurvatureSession(taskId, node, {SUPERVISOR_LEASE_MS}, true)")
+    replace(session, "CurvatureLease.supervised(range, clock, 3000)",
+            f"CurvatureLease.supervised(range, clock, {SUPERVISOR_LEASE_MS})")
+    work = module.parents[1]
+    shutil.copyfile(ROOT / "tests/WindowSupervisorLeaseTest.java", work / "tests/WindowSupervisorLeaseTest.java")
+    checker = work / "tools/check_window_curvature.py"
+    replace(checker, '    sources.append(ROOT / "tests/WindowCurvatureLeaseTest.java")',
+            '    sources.append(ROOT / "tests/WindowCurvatureLeaseTest.java")\n'
+            '    sources.append(ROOT / "tests/WindowSupervisorLeaseTest.java")')
+    replace(checker, '        subprocess.run([str(args.java), "-cp", output, "WindowCurvatureLeaseTest"], check=True)',
+            '        subprocess.run([str(args.java), "-cp", output, "WindowCurvatureLeaseTest"], check=True)\n'
+            f'        subprocess.run([str(args.java), "-cp", output, "WindowSupervisorLeaseTest", "{SUPERVISOR_LEASE_MS}"], check=True)')
+    replace(module / "control.sh",
+            'if [ "$((count % 10))" -eq 0 ] && read -r pulse_uptime unused < /proc/uptime; then',
+            'if read -r pulse_uptime unused < /proc/uptime; then')
+
+
+def remove_borderless_delay(module: Path) -> None:
+    """Build the timing-only experiment while retaining normal cancellation cleanup."""
+    agent = module / "agent/main.js"
+    replace(agent, "log('BORDERLESS_PENDING', {delaySeconds: 45});",
+            "log('BORDERLESS_PENDING', {delaySeconds: 0});")
+    replace(agent, "                            }), 45000);", "                            }), 0);")
+    replace(module / "control.sh", "Borderless: pending 45-second startup delay.",
+            "Borderless: waiting for queued initialization.")
+    replace(module / "webroot/index.html",
+            "Controls wait until SystemUI is 90 seconds old; borderless attaches 45 seconds later. Reopen app windows afterward.",
+            "Startup test: controls wait until SystemUI is 90 seconds old; borderless attaches after initialization. Reopen app windows afterward.")
+    replace(module / "webroot/settings.js",
+            "App window setup: waiting up to 45 seconds after runtime start. Then close and reopen the app.",
+            "App window setup: waiting for initialization. Then close and reopen the app.")
+    replace(module / "module.prop", "version=0.1.55-azj2-experimental",
+            "version=0.1.56-azj2-startup-test")
+    replace(module / "module.prop", "versionCode=156", "versionCode=157")
+    replace(module / "module.prop", "description=Experimental AZJ2 window controls with",
+            "description=AZJ2 startup test: no extra 45-second Borderless wait; 90-second SystemUI age guard retained. Window controls with")
 
 
 def main() -> None:
@@ -468,6 +797,8 @@ def main() -> None:
                         help="Include rim hiding and hover caption in the shared runtime")
     parser.add_argument("--integrated-rotation", action="store_true",
                         help="Include pitch, yaw and roll in the shared runtime (requires --integrated-borderless)")
+    parser.add_argument("--no-borderless-delay", action="store_true",
+                        help="Build the separate 0.1.56 timing test, retaining the 90-second SystemUI age guard")
     # Keep old build commands working; boundary alignment is now part of the combined build.
     parser.add_argument("--experimental-boundary", action="store_true", help=argparse.SUPPRESS)
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
@@ -477,6 +808,8 @@ def main() -> None:
         parser.error("Choose only one combined-window build mode")
     if args.integrated_rotation and not args.integrated_borderless:
         parser.error("--integrated-rotation requires --integrated-borderless")
+    if args.no_borderless_delay and not args.integrated_rotation:
+        parser.error("--no-borderless-delay requires the combined --integrated-rotation build")
     if args.experimental_boundary and not args.integrated_rotation:
         parser.error("--experimental-boundary requires --integrated-rotation")
     for name in ("java", "ecj", "r8", "android_jar"):
@@ -589,11 +922,28 @@ def main() -> None:
             integrate_boundary(module)
             integrate_home_pins(module)
             integrate_autostart(module)
+            integrate_immersive_pins(work, module)
+            integrate_pill_pin(module)
+            integrate_supervisor_lease(module)
+            if args.no_borderless_delay:
+                remove_borderless_delay(module)
+            subprocess.run([sys.executable, str(ROOT / "tests/pin-supervisor.test.py"),
+                            str(module / "control.sh")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-boundary-abi.test.py")], check=True)
+            subprocess.run(["node", "--test", str(ROOT / "tests/borderless-caption-discovery.test.mjs")], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/menu-ticket-host.test.py"),
+                            str(module / "android/local/gxr/curvature/MenuAttachmentTicket.java"),
+                            "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-grab-features.test.mjs"),
                             str(ROOT / "tests/window-settings-ui.test.mjs"),
+                            str(ROOT / "tests/immersive-pins.test.mjs"),
+                            str(ROOT / "tests/pin-scrim.test.mjs"),
                             str(ROOT / "tests/home-pins.test.mjs")], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/pins-properties.test.py")], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/pin-menu-task.test.py"),
+                            "--java", str(args.java), "--ecj", str(args.ecj),
+                            "--android-jar", str(args.android_jar)], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/window-feature-settings.test.py")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/curvature-boot-recovery.test.py"),
                             str(module)], check=True)
@@ -606,8 +956,12 @@ def main() -> None:
                             str(module / "control.sh")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/rotation-controller-host.test.py"),
                             "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
+            subprocess.run([sys.executable, str(ROOT / "tests/pinned-panels-host.test.py"),
+                            "--java", str(args.java), "--ecj", str(args.ecj),
+                            "--sdk-tools-lib", str(args.r8.parent)], check=True)
             subprocess.run(["node", str(ROOT / "tests/curvature-combined-lifecycle.mjs"),
-                            str(module / "agent/main.js"), "--rotation", "--boundary", "--home-pins"], check=True)
+                            str(module / "agent/main.js"), "--rotation", "--boundary", "--home-pins",
+                            *(["--no-borderless-delay"] if args.no_borderless_delay else [])], check=True)
             math_classes = Path(temporary) / "rotation-tests"
             subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
                             "-proc:none", "-failOnWarning", "-d", str(math_classes),
@@ -615,6 +969,26 @@ def main() -> None:
                             str(ROOT / "tests/RotationMathTest.java")], check=True)
             subprocess.run([str(args.java), "-cp", str(math_classes),
                             "local.gxr.rotation.RotationMathTest"], check=True)
+            subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
+                            "-proc:none", "-failOnWarning", "-d", str(math_classes),
+                            str(module / "android/local/gxr/pins/FadePolicy.java"),
+                            str(module / "android/local/gxr/pins/BackdropPolicy.java"),
+                            str(module / "android/local/gxr/pins/PanelRay.java"),
+                            str(ROOT / "tests/FadePolicyTest.java"),
+                            str(ROOT / "tests/PanelRayTest.java"),
+                            str(ROOT / "tests/BackdropPolicyTest.java")], check=True)
+            subprocess.run([str(args.java), "-cp", str(math_classes),
+                            "local.gxr.pins.FadePolicyTest"], check=True)
+            subprocess.run([str(args.java), "-cp", str(math_classes),
+                            "local.gxr.pins.BackdropPolicyTest"], check=True)
+            subprocess.run([str(args.java), "-cp", str(math_classes),
+                            "local.gxr.pins.PanelRayTest"], check=True)
+            subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
+                            "-proc:none", "-failOnWarning", "-d", str(math_classes),
+                            str(module / "android/local/gxr/pins/PinRequest.java"),
+                            str(ROOT / "tests/PinRequestTest.java")], check=True)
+            subprocess.run([str(args.java), "-cp", str(math_classes),
+                            "local.gxr.pins.PinRequestTest"], check=True)
         (module / "install-info.txt").write_text(
             "AZJ2 port of BlueScorpioVR's window-curvature module. Installs DISABLED.\n"
             "Firmware I610UES3AZJ2 only; APK and native hashes are checked before attach.\n" +
@@ -627,6 +1001,16 @@ def main() -> None:
              "Standalone curvature source worked on the headset; see README.md.\n")
         )
         (module / "README.md").write_bytes((ROOT / "docs/CURVATURE.md").read_bytes())
+        if args.no_borderless_delay:
+            readme = module / "README.md"
+            readme.write_text(
+                "# Window Controls 0.1.56 immersive brightness candidate\n\n"
+                "Suppresses the separate fullscreen scrim while only owned pins are visible over an immersive app; native diagnostics report the mean requested alpha and suppressed frames. Visual brightness verification is pending. Retains the device-confirmed menu cancellation, restored-caption binding, scoped pin rotation/resizing, VR focus/input routing and tracking leases. Removes only the extra 45-second Borderless wait; "
+                "the 90-second SystemUI process-age guard, firmware checks and quarantine remain. "
+                "Borderless is queued immediately after agent initialization and can still be cancelled on stop.\n\n"
+                "Install this ZIP as an update to the existing Window Controls module. It installs disabled. "
+                "The guide below describes the normal delayed build; its extra 45-second wait does not apply to this test.\n\n"
+                + readme.read_text())
         replace(work / "tools/build_window_curvature.py",
                 "temp_root = Path.home() / 'AppData/Local/Temp/opencode'", "temp_root = None")
 
@@ -638,7 +1022,8 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.30-azj2" if args.integrated_rotation else
+        version = ("0.1.56-azj2-startup-test" if args.no_borderless_delay else
+                   "0.1.55-azj2-experimental" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],

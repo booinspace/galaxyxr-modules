@@ -23,6 +23,11 @@ undetermined. Extended idle/wake stability remains unverified.
 This is a **KernelSU GXR module ZIP**. It requires an active temporary root
 session; it is not an APK or a kernel LKM. Keep DirtyFrag **Autorun off**.
 
+The opt-in [immersive app pins candidate](IMMERSIVE-PINS.md) adds a native
+overlay launcher, a pill-menu **Pin app** action and eye-driven fading. Overlay
+visibility and dragging were confirmed in an earlier trial; the complete pin
+behaviour remains experimental. The confirmed baseline remains 0.1.30.
+
 Version **0.1.30** adds [up to 50 Home pins](HOME-PINS.md), with the same
 five-column tiles and panel size. Scroll vertically above 10 pinned apps.
 The user confirmed automatic startup and working Home/window features. ADB
@@ -255,6 +260,34 @@ method remained on the stack during CMC collection. The patched bridge passed
 20,000 calls with the same test. This supports the fix; it does not establish
 long-term SystemUI stability.
 
+The immersive-pins candidate also includes local quick-code restoration and
+JNI callback-lifetime guards. Its five disposable-process cleanup trials passed
+on AZJ2, and 0.1.36's later module shutdown did not crash SystemUI. The current
+candidate also corrects pin-launch I/O and isolates manual startup from the
+KernelSU UI's freezer group. Version 0.1.37 subsequently hung during startup;
+0.1.38 started and launched pinned windows, but lost its supervisor heartbeat
+and quarantined without killing SystemUI. Candidate 0.1.39 isolates menu polling,
+corrects gaze/focus handling and addresses the compositor's separate brightness
+factor. Versions 0.1.39 and 0.1.40 then exposed a native-helper lifetime bug on
+pinning and must stay disabled. Corrected 0.1.41 retains native code/storage and
+keeps cleanup running after a disarm error; 0.1.42 additionally removes the extra
+45-second Borderless wait. The user confirmed 0.1.48's pin fading, interaction,
+normal Steam Link brightness and uninterrupted VRChat joystick input while looking
+at the pin. Its export matches the live process identity and contains no module
+error or shutdown. The user confirmed 0.1.52's scoped wrist rotation and resizing
+for immersive pins; its watchdogs use five seconds after 0.1.50's guarded
+heartbeat shutdown. A later menu-dismissal race stopped that session. Candidate
+0.1.54 treats that race as cancellation and discovers pre-existing captions for
+ordinary wrist rotation. The user confirmed both fixes and the return-from-Steam-Link
+second-pin test. A small constant immersive-view dim remains while pins are open,
+despite the live CPM layers reporting full opacity and a zero-alpha background
+scrim. Candidate 0.1.56 suppresses the separate native fullscreen scrim under the
+same owned-pin/immersive-only lease; gaze fading and VR input routing are unchanged.
+The user confirmed normal immersive brightness, pin fading and joystick input
+with 0.1.56. Its matching export records 3,784 suppressed scrim frames and no
+fatal error or shutdown. Extended idle/wake remains unverified. See the
+[pin investigation and limits](IMMERSIVE-PINS.md#build-and-attribution).
+
 Curvature uses the pinned BlueScorpioVR native hooks and helper. Borderless
 suppresses task window rims through `CPM.NodeUpdates` and keeps the caption's
 layout and input target. Rotation changes the same task node's orientation
@@ -327,6 +360,9 @@ The builder fetches upstream commit
 `dd1a8915e3bbb8ea44f99033c8bc0dc8fdc22bd2`, verifies Frida downloads, compiles
 one helper DEX, and packages source, dependency receipts and runtime notices.
 Bundled documentation and source receipts contribute to the ZIP checksum.
+The experimental dispatch regression check also requires a host C compiler
+(`cc`) with C11/GNU atomics and pthread support, available in the existing Linux
+build toolchain and macOS command-line tools.
 
 The build runs upstream policy/mesh and Java safety tests plus local checks
 for node ownership, wrapper replacement, cleanup retry, heartbeat expiry,

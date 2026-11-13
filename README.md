@@ -8,8 +8,8 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.30](releases/gxr-window-curvature-0.1.30-azj2-disabled.zip)
-and its [checksum](releases/gxr-window-curvature-0.1.30-azj2-disabled.zip.sha256).
+Download [Window Controls 0.1.56](releases/gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip)
+and its [checksum](releases/gxr-window-curvature-0.1.56-azj2-startup-test-disabled.zip.sha256).
 Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.12).
 
@@ -45,7 +45,7 @@ entry point as a fallback, so activation does not depend on opening Action.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
-| Window controls | Curvature, white-rim removal, pill auto-hide, hand positional rotation in pitch/yaw/roll, aligned movement/resize boundaries, 10× movement distance, sliders, up to 50 Home pins, built-in recovery and automatic Soft restart resume | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, boundary alignment, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410) | [Install, use, build and recover](docs/CURVATURE.md) |
+| Window controls | Curvature, white-rim removal, pill auto-hide, wrist rotation, aligned move/resize boundaries, 10× movement distance, sliders, 50 Home pins, and movable/resizable app pins over immersive apps with gaze fading and continued VR input | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, app pins, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410); dispatch patch based on [Kolektori's work](https://github.com/frida-packages/frida-java-bridge/pull/401) | [Install, use, build and recover](docs/CURVATURE.md) |
 | Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
 | Mic gain boost | Action UI with live 0–40 step gain control, global or Virtual Desktop-only scope, and a local 10-second recording/playback test | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |
@@ -83,6 +83,24 @@ standalone process. The [firmware hold guide](docs/FIRMWARE-HOLD.md)
 records the reversible OTA-agent block applied to keep the headset on AZJ2.
 
 ## Window controls
+
+Opt-in [immersive app pins](docs/IMMERSIVE-PINS.md), by booinspace,
+adds a native overlay launcher and eye-driven fading to the combined runtime.
+The user confirmed that 0.1.54 supports wrist rotation on ordinary windows before
+opening their menus, rapid menu dismissal, and returning from Steam Link to pin
+another app. Pinned apps support gaze fading, dragging, rotation and resizing,
+with VRChat joystick forwarding while looking at the pin. Exported logs match
+the live SystemUI identity and contain no fatal error or quarantine. The user
+also confirmed that 0.1.56 removes the remaining immersive-view dimming while
+retaining pin fading and joystick input.
+Versions 0.1.39 and 0.1.40 contain a native brightness-helper lifetime bug and
+must stay disabled. The current candidate retains native code/storage through
+teardown and keeps VR focus separate from pin-pointer input. Version 0.1.56
+also suppresses the renderer's separate fullscreen scrim while only owned pins
+are visible over an immersive app. It keeps pin gaze fading and input routing
+unchanged and reports the scrim's original alpha in diagnostics. The matching
+device export records 3,784 suppressed positive-alpha scrim frames and no fatal
+error. Extended idle/wake remains unverified.
 
 Install the combined Window Controls ZIP through **KernelSU GXR → Modules →
 Install from storage**. Keep separate Borderless and Rotation modules off.

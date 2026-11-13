@@ -28,6 +28,7 @@ class BootRecoveryTest(unittest.TestCase):
         for name, body in {
             "id": "echo 0",
             "chown": "exit 0",
+            "su": f'echo su >> "{self.root}/su-calls"; [ "$1" = -c ] || exit 1; exec sh -c "$2"',
             "getprop": 'case "$1" in sys.boot_completed) echo 1;; ro.product.model) echo SM-I610;; *) echo samsung/xrvst2ue/xrvst2:14/UML2.260301.001/I610UES3AZJ2:user/release-keys;; esac',
             "pidof": f'[ "$1" != frida-inject ] || test ! -f "{self.root}/injector" || echo 999',
             "sha256sum": f'echo "$*" >> "{self.root}/checks"; case "$*" in *firmware.sha256*) test ! -f "{self.root}/bad-firmware";; *) test ! -f "{self.root}/bad-payload";; esac',
@@ -44,6 +45,7 @@ class BootRecoveryTest(unittest.TestCase):
                 "/dev/gxr-": str(self.root / "dev/gxr-"),
                 "/dev/ksu-restart-stage": str(self.root / "dev/restart"),
                 "/proc/sys/kernel/random/boot_id": str(self.root / "boot"),
+                "/system/bin/su": str(commands / "su"),
             }.items():
                 text = text.replace(before, after)
             (self.module / name).write_text(text)
@@ -149,6 +151,7 @@ class BootRecoveryTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Exported", result.stdout)
         self.assertEqual((self.root / "calls").read_text(), "run\n")
+        self.assertEqual((self.root / "su-calls").read_text(), "su\n")
         self.assert_preserved()
         (self.state / "status").unlink()
         self.state.rmdir()
