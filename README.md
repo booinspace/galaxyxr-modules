@@ -8,10 +8,12 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.60](releases/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip)
-and its [checksum](releases/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip.sha256).
+Download [Window Controls 0.1.60](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.13/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip)
+and verify it against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.13/SHA256SUMS).
 Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.13).
+Built packages and checksums are published through GitHub Releases. This
+repository tracks source, documentation, tests and build scripts.
 
 Window Controls now includes **hand positional rotation**: grab a window to
 move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
@@ -157,7 +159,10 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 - [Virtual Desktop Windows companion build](scripts/build-vd-eye-fix.ps1)
 - [Sources, credits and licensing](docs/SOURCES.md)
 
-The repository includes component sources and build inputs. Use the combined
-window package for the supported curvature/borderless/rotation setup. Module
-ZIPs install disabled and verify their payload and firmware before attaching.
+Build scripts write generated packages to the ignored local `releases/`
+directory. Package-validation tests require those outputs: build the relevant
+module first, or download its ZIP from GitHub Releases into that directory.
+
+Use the combined window package for the supported curvature/borderless/rotation
+setup. Module ZIPs install disabled and verify their payload and firmware before attaching.
 A full reboot clears live in-process hooks; installed module files can remain.

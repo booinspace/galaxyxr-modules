@@ -70,7 +70,8 @@ requirements and source/DEX integrity. A receipt in each ZIP records upstream,
 source and tool hashes. The shell test exercises the ordered low-light restart
 and prevents an early stock report while SystemUI still caches a changed value.
 
-To run only the read-only probe:
+The build above also generates `releases/bread-azj2-api-probe.dex`; it is not
+tracked in Git. After building, run the read-only probe with:
 
 ```sh
 adb push releases/bread-azj2-api-probe.dex /data/local/tmp/
