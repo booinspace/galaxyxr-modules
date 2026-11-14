@@ -150,6 +150,8 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 
 ## Build and source
 
+- [Install from the KernelSU GXR catalogue](docs/MODULE-CATALOGUE.md)
+
 The module builders share [gxr_build.py](scripts/gxr_build.py) for packaging,
 installer validation and common compiler helpers. See [building and checks](docs/BUILDING.md).
 Rotation is included in Window Controls; there is no separate Rotation package.

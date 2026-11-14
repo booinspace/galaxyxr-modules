@@ -1,0 +1,7 @@
+{
+  "version": "0.2.3-azj2-experimental",
+  "versionCode": 6,
+  "zipUrl": "https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.14/gxr-mic-gain-boost-azj2-0.2.3-disabled.zip",
+  "sha256": "ed3913326520880563c0ecac03105329d63102f494cd79fc78f5916bcf8d89dd",
+  "changelog": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/README.md"
+}

@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "gxr_framebuffer10",
+      "name": "Galaxy XR Framebuffer10 (AZJ2) (auto)",
+      "author": "4uva4ek; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. 10-bit SDR colour output with locally generated shader fixes. AZJ2 only; installs disabled. Apply and remove through one GXR Soft restart. No HDR and no vendor binaries bundled.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_framebuffer10.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_mic_gain_azj2",
+      "name": "Galaxy XR mic gain boost (AZJ2)",
+      "author": "BreadDoesStuff; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. Action opens live mic gain settings with a 10-second record/playback test. 0\u201340 mixer steps, global or Virtual Desktop only. Installs disabled; AZJ2 only. High gain can clip.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_mic_gain_azj2.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_mvhevc_eye_fix",
+      "name": "Galaxy XR MV-HEVC Eye Fix (AZJ2)",
+      "author": "AngelDark92; AZJ2 lifecycle port by booinspace",
+      "description": "SM-I610 AZJ2. Corrects left-primary MV-HEVC eye order in Gallery XR. Generates reviewed library copies locally; no firmware binary is bundled. Installs disabled. Enable and Action; reopen Gallery. Right-primary videos are unsupported.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_mvhevc_eye_fix.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_no_lowlight_azj2",
+      "name": "Galaxy XR no low-light toast (AZJ2)",
+      "author": "BreadDoesStuff; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. Experimental disabled AZJ2 port. Read README.md for activation, side effects and recovery.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_no_lowlight_azj2.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_passthrough_azj2",
+      "name": "Galaxy XR passthrough anywhere (AZJ2)",
+      "author": "BreadDoesStuff; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. Experimental disabled AZJ2 port. Read README.md for activation, side effects and recovery.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_passthrough_azj2.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_questlhsync",
+      "name": "QuestLHSync Lighthouse alignment (AZJ2)",
+      "author": "stearnsbq and CreoleVR; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. Factory-calibrated Lighthouse alignment for SteamVR/Virtual Desktop. AZJ2 only. Does not provide native Android XR controller input. Installs disabled; enable and Action to start.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_questlhsync.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_root_ft_azj2",
+      "name": "Galaxy XR root face tracking (AZJ2)",
+      "author": "compdoge; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. Read-only vendor probes relay per-eye gaze, pupils, face and tongue to VRCFT-ALVR-UE. Exact AZJ2 only. Installs disabled. Configure a PC IPv4 address in Action before starting.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_root_ft_azj2.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_wear_dim_azj2",
+      "name": "Galaxy XR wear-aware display blanking (AZJ2)",
+      "author": "booinspace",
+      "description": "SM-I610 AZJ2. Turns the panel off after 60 seconds without eyes while worn; polls every 16 ms while blanked to restore on eye return. Keeps stock removal sleep. Enable then Action; no Soft restart needed.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_wear_dim_azj2.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_wifi_adb",
+      "name": "Wi-Fi ADB",
+      "author": "4uva4ek",
+      "description": "SM-I610 AZJ2. Automatically start authenticated ADB TCP on port 5555. Installs disabled.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_wifi_adb.json",
+      "experimental": true
+    },
+    {
+      "id": "gxr_window_curvature",
+      "name": "Galaxy XR Window Controls",
+      "author": "BlueScorpioVR; AZJ2 port by booinspace",
+      "description": "SM-I610 AZJ2. AZJ2 startup experiment: no fixed SystemUI age or Borderless delay; readiness, identity and quarantine checks retained. Window controls with opt-in immersive app pins, 50 Home pins, 10x movement distance, aligned grab and resize boundaries, Action settings, curvature, borderless, rotation sliders and opt-in wrist-grab rotation. Built-in recovery and coordinated restart resume. Keep separate window modules off. Installs disabled.",
+      "updateJson": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/updates/gxr_window_curvature.json",
+      "experimental": true
+    }
+  ]
+}
