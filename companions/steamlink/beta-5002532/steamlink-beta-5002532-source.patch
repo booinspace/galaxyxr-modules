@@ -1,0 +1,734 @@
+diff --git a/extensions/codecs-support-layer/src/codecs_support_layer.cpp b/extensions/codecs-support-layer/src/codecs_support_layer.cpp
+index a136d8ac0a9eaa4922f0bfef5833fa89822aa8d5..8a372a511f3b4cd1c9475e827f4fc6086aaaee7a 100644
+--- a/extensions/codecs-support-layer/src/codecs_support_layer.cpp
++++ b/extensions/codecs-support-layer/src/codecs_support_layer.cpp
+@@ -133,9 +133,15 @@ const GotProfile kProfile5002527 = {
+     {0x239670, 0x239678, 0x239680, 0x239688, 0x2396a8, 0x2396b0, 0x2396b8,
+      0x2396e0, 0x2396e8, 0x239700, 0x239708, 0x239710, 0x239778, 0x239788, 0x239790},
+ };
++// 5002532: Init+0xc anchor and the 15 exact AMedia* JUMP_SLOT relocations.
++const GotProfile kProfile5002532 = {
++    "2.0.25/5002532", 0xfe254,
++    "ba55d478ffdc128fdb212207384ab260e94279aa5c725f6f56fe94ec69041c3d",
++    {0x2396e0, 0x2396e8, 0x2396f0, 0x2396f8, 0x239718, 0x239720, 0x239728, 0x239750, 0x239758, 0x239770, 0x239778, 0x239780, 0x2397e8, 0x2397f8, 0x239800},
++};
+ const GotProfile* const kProfiles[] = {
+     &kProfile5001712, &kProfile5001812, &kProfile5001968, &kProfile5002244, &kProfile5002363,
+-    &kProfile5002395, &kProfile5002527,
++    &kProfile5002395, &kProfile5002527, &kProfile5002532,
+ };
+ constexpr size_t kProfileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
+ 
+diff --git a/patches/src/main/kotlin/app/template/patches/shared/Constants.kt b/patches/src/main/kotlin/app/template/patches/shared/Constants.kt
+index b93d209722cf9e1ff0bff6fb85ef37e82bd9a54a..29adc0b0e4f63761de56862bb6816800ca5f5e2b 100644
+--- a/patches/src/main/kotlin/app/template/patches/shared/Constants.kt
++++ b/patches/src/main/kotlin/app/template/patches/shared/Constants.kt
+@@ -21,21 +21,24 @@ object Constants {
+     // (catalog generation) see it. Patches that were not adapted to it must not consume the
+     // broad native lists; they use the explicit *_THROUGH_5002395 lists below.
+     private val STEAM_LINK_5002527 = SteamLinkBuild("2.0.24", 5002527)
++    private val STEAM_LINK_5002532 = SteamLinkBuild("2.0.25", 5002532)
+     private val NATIVE_XR_STEAM_LINK_BUILDS = listOf(
+         SteamLinkBuild("2.0.23", 5002363),
+         SteamLinkBuild("2.0.24", 5002395),
+         STEAM_LINK_5002527,
++        STEAM_LINK_5002532,
+     )
+     // Native builds as they were before 5002527: the exact scope of every patch that has not
+     // been adapted and verified on the new base (identity driver, OpenXR BOOST, ...).
+     private val NATIVE_XR_STEAM_LINK_BUILDS_THROUGH_5002395 =
+-        NATIVE_XR_STEAM_LINK_BUILDS.filterNot { it == STEAM_LINK_5002527 }
++        NATIVE_XR_STEAM_LINK_BUILDS.filterNot { it in setOf(STEAM_LINK_5002527, STEAM_LINK_5002532) }
+     private val FULL_FACEBRIDGE_STEAM_LINK_BUILDS = LEGACY_STEAM_LINK_BUILDS
+     // Tongue transport only; the full face layer (FULL_FACEBRIDGE) never reaches a native build.
+     private val MODERN_TONGUE_BRIDGE_STEAM_LINK_BUILDS = listOf(
+         SteamLinkBuild("2.0.23", 5002363),
+         SteamLinkBuild("2.0.24", 5002395),
+         STEAM_LINK_5002527,
++        STEAM_LINK_5002532,
+     )
+     private val HIGH_RESOLUTION_STEAM_LINK_BUILDS = listOf(
+         SteamLinkBuild("2.0.20", 5001712),
+@@ -139,6 +142,18 @@ object Constants {
+     val COMPATIBILITIES_STEAM_LINK =
+         COMPATIBILITIES_STEAM_LINK_LEGACY + COMPATIBILITIES_STEAM_LINK_NATIVE_XR
+ 
++    // The beta adds only seven verified features; older controller/network scopes stay frozen.
++    val COMPATIBILITIES_STEAM_LINK_THROUGH_5002527 =
++        (LEGACY_STEAM_LINK_BUILDS + NATIVE_XR_STEAM_LINK_BUILDS.filterNot { it == STEAM_LINK_5002532 })
++            .map(::steamLinkBuildCompatibility)
++
++    val COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL_THROUGH_5002527 =
++        experimentalCompatibilities(LEGACY_STEAM_LINK_BUILDS +
++            NATIVE_XR_STEAM_LINK_BUILDS.filterNot { it == STEAM_LINK_5002532 })
++
++    val COMPATIBILITIES_STEAM_LINK_NATIVE_XR_EXPERIMENTAL_THROUGH_5002527 =
++        experimentalCompatibilities(NATIVE_XR_STEAM_LINK_BUILDS.filterNot { it == STEAM_LINK_5002532 })
++
+     // Scope of patches that were never adapted to the newer builds: 5002527 is excluded too.
+     val COMPATIBILITIES_STEAM_LINK_THROUGH_5002395 =
+         (LEGACY_STEAM_LINK_BUILDS + NATIVE_XR_STEAM_LINK_BUILDS_THROUGH_5002395)
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatch.kt
+index 0c14543d8d5972d1be52e1e5a53ac992eaed127c..901f520566d7572c794369d2462341189d2dcfb6 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatch.kt
+@@ -14,6 +14,9 @@ import java.nio.file.StandardOpenOption
+ import java.security.MessageDigest
+ 
+ internal const val CODECS_SUPPORT_LIBRARY = "libgxr_codecs_support.so"
++internal const val CODECS_SUPPORT_BETA_LIBRARY = "libgxr_codecs_support_beta5002532.so"
++internal const val CODECS_SUPPORT_BETA_LIBRARY_SHA256 =
++    "5732a80c062e96559bc57bb21b52713221bd3f66ff6c0d4fae0abb787a6b6b05"
+ internal const val CODECS_SUPPORT_MANIFEST = "XR_APILAYER_local_GalaxyXR_codecs_support.json"
+ internal const val CODECS_SUPPORT_LIBRARY_SHA256 =
+     "eab08c05e85f46725a0a81112750cd9ce9ff201946a79817231fccc640be4045"
+@@ -74,6 +77,11 @@ private val codecsSupportScenePreconditions: Map<String, List<Triple<Int, Int, S
+         Triple(0xfebd0, 0x80, "e34d93b0c58d3c3e1d0b0e0a840ef0d970930456cbecf4a9540cccc74d0ff9e5"),
+         Triple(0xfe220, 0x40, "f7450ac76c9d866d2256e06d40de265bf94aae8e945e18b91b86dc567a28bcfe"),
+     ),
++    "2.0.25/5002532" to listOf(
++        Triple(0xfe254, 0x80, "ba55d478ffdc128fdb212207384ab260e94279aa5c725f6f56fe94ec69041c3d"),
++        Triple(0xfebf8, 0x80, "b795dfdd403d4151ef3be9851df5d2d75cb2238f3cee7fbc3aa145e142a43b3c"),
++        Triple(0xfe248, 0x40, "8dba127c6dd76fb9b962c29f4316af4f6b38d4dde30ac872c9376b37a9b10c00"),
++    ),
+ )
+ 
+ /** Hash the bundled runtime pins for the first (anchor) region of an exact `version/code`. */
+@@ -97,7 +105,7 @@ internal fun validateCodecsSupportScene(
+     }
+ }
+ 
+-internal fun validateCodecsSupportPayload(helper: ByteArray, manifest: ByteArray) {
++internal fun validateCodecsSupportPayload(helper: ByteArray, manifest: ByteArray, beta5002532: Boolean = false) {
+     if (helper.size < 20 || !helper.copyOfRange(0, 4)
+             .contentEquals(byteArrayOf(0x7f, 0x45, 0x4c, 0x46)) ||
+         helper[4] != 2.toByte() || helper[5] != 1.toByte() ||
+@@ -105,7 +113,8 @@ internal fun validateCodecsSupportPayload(helper: ByteArray, manifest: ByteArray
+     ) {
+         throw PatchException("Bundled codecs support helper is not an ARM64 ELF library")
+     }
+-    if (codecsSha256(helper) != CODECS_SUPPORT_LIBRARY_SHA256) {
++    val expectedHash = if (beta5002532) CODECS_SUPPORT_BETA_LIBRARY_SHA256 else CODECS_SUPPORT_LIBRARY_SHA256
++    if (codecsSha256(helper) != expectedHash) {
+         throw PatchException("Bundled codecs support helper failed its SHA-256 precondition")
+     }
+     if (codecsSha256(manifest) != CODECS_SUPPORT_MANIFEST_SHA256) {
+@@ -134,9 +143,10 @@ internal fun installCodecsSupportResources(
+     val sceneFile = File(apkRoot, "lib/arm64-v8a/libvrlink_scene.so")
+     if (!sceneFile.isFile) throw PatchException("Missing exact codecs support renderer library")
+     validateCodecsSupportScene(sceneFile.readBytes(), versionName, versionCode)
+-    val helper = helperBytes ?: projectionModeResource(CODECS_SUPPORT_LIBRARY)
++    val beta5002532 = versionName == "2.0.25" && versionCode == "5002532"
++    val helper = helperBytes ?: projectionModeResource(if (beta5002532) CODECS_SUPPORT_BETA_LIBRARY else CODECS_SUPPORT_LIBRARY)
+     val manifest = manifestBytes ?: projectionModeResource(CODECS_SUPPORT_MANIFEST)
+-    validateCodecsSupportPayload(helper, manifest)
++    validateCodecsSupportPayload(helper, manifest, beta5002532)
+ 
+     val files = mutableListOf(
+         File(sceneFile.parentFile, CODECS_SUPPORT_LIBRARY) to helper,
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerGripHapticsPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerGripHapticsPatch.kt
+index dc28871420dd3b9af48f021c1d31cb82637ac176..1ae190c179c0921a5532f309a79b17e5460725b4 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerGripHapticsPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerGripHapticsPatch.kt
+@@ -3,7 +3,7 @@ package app.template.patches.steamlink.androidxr
+ import app.morphe.patcher.patch.PatchException
+ import app.morphe.patcher.patch.bytecodePatch
+ import app.morphe.patcher.patch.rawResourcePatch
+-import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL
++import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL_THROUGH_5002527 as COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL
+ import app.template.patches.shared.PatchCategories
+ import app.template.patches.shared.buildLabel
+ 
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerHalPosePatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerHalPosePatch.kt
+index 18198816f9b139f3fca8b45bd124fa27482729bc..3e1d85e9dd352f3539dffd2c6c04b4385f459643 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerHalPosePatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerHalPosePatch.kt
+@@ -4,7 +4,7 @@ import app.morphe.patcher.patch.PatchException
+ import app.morphe.patcher.patch.bytecodePatch
+ import app.morphe.patcher.patch.rawResourcePatch
+ import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_LEGACY_EXPERIMENTAL
+-import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_NATIVE_XR_EXPERIMENTAL
++import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_NATIVE_XR_EXPERIMENTAL_THROUGH_5002527 as COMPATIBILITIES_STEAM_LINK_NATIVE_XR_EXPERIMENTAL
+ import app.template.patches.shared.Constants.isLegacyXrFoundationSteamLinkBuild
+ import app.template.patches.shared.PatchCategories
+ import app.template.patches.shared.buildLabel
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerPoseTimePatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerPoseTimePatch.kt
+index c251df79b11056086211c8785f9b4344fe90afd0..1252b442548a251a19c1aef4f475527b2659ac3d 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerPoseTimePatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerPoseTimePatch.kt
+@@ -3,7 +3,7 @@ package app.template.patches.steamlink.androidxr
+ import app.morphe.patcher.patch.PatchException
+ import app.morphe.patcher.patch.intSliderOption
+ import app.morphe.patcher.patch.rawResourcePatch
+-import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL
++import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL_THROUGH_5002527 as COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL
+ import app.template.patches.shared.PatchCategories
+ import app.template.patches.shared.buildLabel
+ import java.nio.ByteBuffer
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatch.kt
+index cebbb22e5968aac3ebc2f0f90cfdc88b3615e654..e5d5151ad875f2abf04d28f65dc507fbd8c255c8 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatch.kt
+@@ -2,7 +2,7 @@ package app.template.patches.steamlink.androidxr
+ 
+ import app.morphe.patcher.patch.PatchException
+ import app.morphe.patcher.patch.rawResourcePatch
+-import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK
++import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_THROUGH_5002527 as COMPATIBILITIES_STEAM_LINK
+ import app.template.patches.shared.PatchCategories
+ import app.template.patches.shared.buildLabel
+ 
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/GxrTongueBridgePatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/GxrTongueBridgePatch.kt
+index 3d546031569e475e381f6ef3bac49f09c1c057db..8872f5726fc83d41c5670620ac11c047c07e86a7 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/GxrTongueBridgePatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/GxrTongueBridgePatch.kt
+@@ -81,6 +81,11 @@ private val MODERN_TONGUE_LAYOUTS = listOf(
+         MODERN_TONGUE_VADDR_5002527, MODERN_TONGUE_STOCK_SHA256_5002527,
+         MODERN_TONGUE_ORIGINAL, MODERN_TONGUE_REPLACEMENT,
+     ),
++    // XRQGetFaceTracking+0x754: x21 is SP+0x40, x8 is the FB2 weights array.
++    ModernTongueLayout(
++        "2.0.25", "5002532", 2333584, 0x144004L,
++        "fcac719a50d11ba4fd76e92cd9ce25366d901c924340c91041ecffae89fd1bf5", MODERN_TONGUE_ORIGINAL, MODERN_TONGUE_REPLACEMENT,
++    ),
+ )
+ 
+ private fun ByteArray.sha256(): String =
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/NativeBatterySettingsPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/NativeBatterySettingsPatch.kt
+index 8d48d4fa253be418fc1c667ade0c64d43cd78e69..36f5827670454b74b7e8bc67f92a9fb6836476c4 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/NativeBatterySettingsPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/androidxr/NativeBatterySettingsPatch.kt
+@@ -18,6 +18,7 @@ internal val NATIVE_BATTERY_SETTINGS_BUILDS = setOf(
+     "2.0.23" to "5002363",
+     "2.0.24" to "5002395",
+     "2.0.24" to "5002527",
++    "2.0.25" to "5002532",
+ )
+ 
+ internal fun isNativeBatterySettingsBuild(version: String, versionCode: String): Boolean =
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoiseLayouts.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoiseLayouts.kt
+index 39f0f766e1f9c7649df55c28405562d53a2fb1bf..12b9ee1b41b5b4e935e099329ad5282b03b73688 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoiseLayouts.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoiseLayouts.kt
+@@ -228,4 +228,43 @@ internal val BLUE_NOISE_LAYOUTS = listOf(
+         stockPrefixHash = "45392bceb20404945ad349e04318dd52c07441456018b62267847ed58349a453",
+         helper = BlueNoiseHelperVariant.INNER_FADE,
+     ),
++    // Exact 5002532 ELF symbols, shader bytes and relocation sections.
++    BlueNoiseLayout("2.0.25", "5002532", 2333584,
++        "fcac719a50d11ba4fd76e92cd9ce25366d901c924340c91041ecffae89fd1bf5", 0xa3085, 0x9f70a, 0xf6698L,
++        listOf(
++            BlueNoiseSite(0x6b341, "libGLESv3.so", "libgxd.so"),
++            BlueNoiseSite(0x42a66, "glShaderSource", "gxShaderSource"),
++            BlueNoiseSite(0x29749, "glDrawArrays", "gxDrawArrays"),
++            BlueNoiseSite(0x423a8, "eglCreateContext", "gxdCreateContext"),
++            BlueNoiseSite(0x42420, "eglDestroyContext", "gxdDestroyContext"),
++            BlueNoiseSite(0x423dd, "eglMakeCurrent", "gxdMakeCurrent"),
++            BlueNoiseSite(0x42444, "eglTerminate", "gxdTerminate"),
++            BlueNoiseSite(0xa5378, "glCompileShader", "gxCompileShader"),
++            BlueNoiseSite(0xab16f, "glLinkProgram", "gxLinkProgram"),
++            BlueNoiseSite(0x95e93, "glDeleteShader", "gxDeleteShader"),
++            BlueNoiseSite(0xaa576, "glDeleteProgram", "gxDeleteProgram"),
++        ), listOf(
++            BlueNoiseGuard(0x1807b8, 160, "2eaf419f0c36d924a303a2771a174fd63e632353fd490d3149bc2f4c7614287d"),
++            BlueNoiseGuard(0xf64b0, 780, "81d040af060eb6509665cddaa1994eba9cebcb3014a78645afe5a01d42fa64f4"),
++            BlueNoiseGuard(0xf6304, 428, "06479792f3b5243fa723b5cc46110185ccb2af1aef7d399aa29922b2d8c3cde9"),
++            BlueNoiseGuard(0xf5dac, 508, "da6349083fbeac1b8e4f0972eff14b41e67ff85c50c7b8e797dd7e382e678bbc"),
++            BlueNoiseGuard(0x9b2c0, 29, "93158a53e85fde1af61ce449f16c91b3b4213c93101cb98da42e5cc5bdca3f4c"),
++            BlueNoiseGuard(0x9f70a, 411, "86efda0fc6d87db53627ab0b0f20ec0b7dff6b5a45d580107aab1f148e372707"),
++            BlueNoiseGuard(0x18054c, 16, "520cb7afe4d1ad1b58966b0e0218f5c9c3a83fef8d8844cd8d7b1c6848a12c21"),
++            BlueNoiseGuard(0x1805ac, 16, "f9aab962e3a3073fd575ccc91f6750fc2f535d3022b0c5c4412cf377491a05c3"),
++            BlueNoiseGuard(0x18058c, 16, "a1fe5328ce8630c84e09c6f580a1417f37ab99dc65ed381e1b4b5f3251e0e8f0"),
++            BlueNoiseGuard(0x18057c, 16, "42a3e69f04296b17813a9e59be3b73b06bb130bc07320a85f929c36530b4a6e9"),
++            BlueNoiseGuard(0x2f8, 124176, "4cd934430ff50eb127de3df5eb87470526a3edaa1db9db0c5c83161d7e872889"), // .dynsym
++            BlueNoiseGuard(0x233f88, 544, "a8a09b35c04ec48bf952328f50b185b0a3e7dc47564307dcda8dc9de9e4eefc3"), // .dynamic
++            BlueNoiseGuard(0x6b368, 126480, "ac9ecaf4d7adc8d7ffa1041d034e958ca85bda38489c1bd736c642965b285a95"), // .rela.dyn
++            BlueNoiseGuard(0x8a178, 43560, "87ff8ffd49a646650d39d01f8f6af4342618bf65accac99b8a1926ddc78087b6"), // .rela.plt
++            BlueNoiseGuard(0x210f8, 31920, "28edd78370489b3b71640702438d86e5a3fc0017e94315ee40a5b2b4bb84e292"), // .gnu.hash
++        ),
++        shaderSize = VIDEO_SHADER_SIZE_INNER_FADE,
++        maskedSize = VD_SDR_FOVEA_SUFFIX_SIZE_INNER_FADE,
++        maskedStockHash = "44c9f03332812f799da1ae4ef0463eb79008ac1c70b094ac309bde2918e75bb6",
++        backgroundStockHash = "ff76ffc30fdd974746d5b8f2352f52a435b2857893d3ab8cf96c440d4051821b",
++        stockPrefixHash = "45392bceb20404945ad349e04318dd52c07441456018b62267847ed58349a453",
++        helper = BlueNoiseHelperVariant.INNER_FADE,
++    ),
+ )
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchHelper.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchHelper.kt
+index 0144b4f8ad517df3d8ce09359273b04e843cea02..f919bb1ff3bc7ea86b4f7f9f5830e02594b1c3c5 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchHelper.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchHelper.kt
+@@ -47,6 +47,7 @@ private fun blueNoiseTarget(layout: BlueNoiseLayout, layer: BlueNoiseLayer): Blu
+         "5002395" -> BlueNoiseTarget(0x99a51, 29, 0xf2ed4L, layout.backgroundStockHash)
+         // glDrawArrays return of the base program inside RenderSpecific (0xf6744 + 4).
+         "5002527" -> BlueNoiseTarget(0x9b2c0, 29, 0xf6748L, layout.backgroundStockHash)
++        "5002532" -> BlueNoiseTarget(0x9b2c0, 29, 0xf6778L, layout.backgroundStockHash)
+         else -> throw PatchException("Unknown background blue-noise layout")
+     }
+ 
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/HmdOnlyPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/HmdOnlyPatch.kt
+index 31188736de6e37d59f48b744a946d862971f72b2..aeb6970966c56df2a5fccd944f082b213b182678 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/HmdOnlyPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/HmdOnlyPatch.kt
+@@ -144,6 +144,16 @@ private val HMD_LAYOUTS = listOf(
+             VelocityPatch(0x00102E28L, 48),
+         ),
+     ),
++    // GetPose+0x68 reads XRQGetTimeNow; these six stores write PackedPose velocities.
++    HmdLayout(
++        versionName = "2.0.25", versionCode = 5002532, fileSize = 2333584,
++        stockSha256 = "fcac719a50d11ba4fd76e92cd9ce25366d901c924340c91041ecffae89fd1bf5", hookVaddr = 0x102BB8L,
++        velocityPatches = listOf(
++            VelocityPatch(0x102E2CL, 28), VelocityPatch(0x102E30L, 32),
++            VelocityPatch(0x102E34L, 36), VelocityPatch(0x102E40L, 40),
++            VelocityPatch(0x102E44L, 44), VelocityPatch(0x102E50L, 48),
++        ),
++    ),
+ )
+ 
+ private const val PT_LOAD = 1
+@@ -379,7 +389,7 @@ internal fun patchVisualDelay(
+         )
+     }
+     verifyAddedLegacyNativeCode(bytes, versionName, versionCode)
+-    val guardedTransitions = layout.versionCode in setOf(5001812, 5001968, 5002363, 5002395, 5002527)
++    val guardedTransitions = layout.versionCode in setOf(5001812, 5001968, 5002363, 5002395, 5002527, 5002532)
+     if (guardedTransitions && offsetMs !in 0L..4000L) {
+         throw PatchException("Visual Delay offset must be within 0..4000 ms")
+     }
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/MicrophoneInputPresetPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/MicrophoneInputPresetPatch.kt
+index 3f139ec6fad74363a27a1ea7745c4102f0138379..c33b67d69c07ccd423fae56cf522bfa0e4d6308c 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/MicrophoneInputPresetPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/MicrophoneInputPresetPatch.kt
+@@ -49,6 +49,8 @@ private val NATIVE_MICROPHONE_LAYOUTS = mapOf(
+     // longer opens streams). Call at 0xf9040; `ldr x0, [sp, #0x10]` at 0xf9038, preset MOV at
+     // 0xf903c follows setDirection(1)=input and setChannelCount(1) in the same builder.
+     "5002527" to NativeMicrophoneLayout(2_333_472, 0xF903C),
++    // OpenStreams input builder, immediately before setInputPreset at 0xf9070.
++    "5002532" to NativeMicrophoneLayout(2_333_584, 0xF906C),
+ )
+ 
+ // Whole-function identity for layouts that need more than the prefix+MOV signature. The
+@@ -61,6 +63,10 @@ private val NATIVE_MICROPHONE_FUNCTIONS = mapOf(
+         0xF8D88, 908, 0xF903C,
+         "1687a5e83bf1b081b254d7c9edc4e50db04cc13d7f6ee0ab78ac38b0fae5cccd",
+     ),
++    "5002532" to MicrophoneFunctionIdentity(
++        0xF8DB8, 908, 0xF906C,
++        "5bebc5b4810a088ff4b5d5cdd723d3c77227bc9bac7ef8ea8168b55b8aba416d",
++    ),
+ )
+ 
+ private fun verifyMicrophoneFunction(bytes: ByteArray, versionCode: String) {
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/NetworkOptimizationsPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/NetworkOptimizationsPatch.kt
+index 2dcbfa2a942a894024dd3d77d7385dd7af585991..37fa34c5a55b89d23923a4847954bc773a445a1d 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/NetworkOptimizationsPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/NetworkOptimizationsPatch.kt
+@@ -2,7 +2,7 @@ package app.template.patches.steamlink.binary
+ 
+ import app.morphe.patcher.patch.PatchException
+ import app.morphe.patcher.patch.rawResourcePatch
+-import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK
++import app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_THROUGH_5002527 as COMPATIBILITIES_STEAM_LINK
+ import app.template.patches.shared.PatchCategories
+ import app.template.patches.shared.buildLabel
+ import java.security.MessageDigest
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/OledCalibrationPatch.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/OledCalibrationPatch.kt
+index 2308159e02dac61203ec077279cf629708342bb8..32e72d60375e1ed8ef66cfe9f1d645596982b0ec 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/OledCalibrationPatch.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/OledCalibrationPatch.kt
+@@ -112,6 +112,11 @@ private val VIDEO_LIBRARY_LAYOUTS = listOf(
+         shaderSize = VIDEO_SHADER_SIZE_INNER_FADE,
+         innerFade = true,
+     ),
++    VideoLibraryLayout(
++        "2.0.25", 5002532, 2333584, "fcac719a50d11ba4fd76e92cd9ce25366d901c924340c91041ecffae89fd1bf5",
++        intArrayOf(0x10d658, 0x10d6d0),
++        shaderSize = VIDEO_SHADER_SIZE_INNER_FADE, innerFade = true,
++    ),
+ )
+ 
+ internal fun isSupportedVideoLibrarySize(size: Int): Boolean =
+diff --git a/patches/src/main/kotlin/app/template/patches/steamlink/binary/VdSdrFoveaPatchHelper.kt b/patches/src/main/kotlin/app/template/patches/steamlink/binary/VdSdrFoveaPatchHelper.kt
+index 8519fcf807ffe54586eef92271aafecab32384cf..e6881a482d77c0d09279beaf6f3d06b2eab94e7c 100644
+--- a/patches/src/main/kotlin/app/template/patches/steamlink/binary/VdSdrFoveaPatchHelper.kt
++++ b/patches/src/main/kotlin/app/template/patches/steamlink/binary/VdSdrFoveaPatchHelper.kt
+@@ -77,6 +77,15 @@ internal val VD_SDR_FOVEA_LAYOUTS = listOf(
+         shaderSize = VIDEO_SHADER_SIZE_INNER_FADE,
+         innerFade = true,
+     ),
++    VdSdrFoveaLayout("2.0.25", "5002532", 2333584,
++        "fcac719a50d11ba4fd76e92cd9ce25366d901c924340c91041ecffae89fd1bf5", 0x9f70a, 0x9b2c0,
++        listOf(
++            VdSdrFoveaGuard(0xf5dac, 508, "da6349083fbeac1b8e4f0972eff14b41e67ff85c50c7b8e797dd7e382e678bbc"),
++            VdSdrFoveaGuard(0xf64b0, 780, "81d040af060eb6509665cddaa1994eba9cebcb3014a78645afe5a01d42fa64f4"),
++        ),
++        maskedSize = VD_SDR_FOVEA_SUFFIX_SIZE_INNER_FADE,
++        shaderSize = VIDEO_SHADER_SIZE_INNER_FADE, innerFade = true,
++    ),
+ )
+ 
+ private val STOCK_MASKED_SUFFIX = (
+diff --git a/patches/src/test/kotlin/app/template/patches/shared/ConstantsTest.kt b/patches/src/test/kotlin/app/template/patches/shared/ConstantsTest.kt
+index 8bcd5a4ddf8ed2d979dac71dec933c086e07a996..c4d2debfa1473196f621f18ee94c1aa33b90553e 100644
+--- a/patches/src/test/kotlin/app/template/patches/shared/ConstantsTest.kt
++++ b/patches/src/test/kotlin/app/template/patches/shared/ConstantsTest.kt
+@@ -72,18 +72,18 @@ class ConstantsTest {
+         assertFalse(Constants.isEarlierStartupSteamLinkBuild("2.0.24", "5002527"))
+         assertFalse(Constants.isEarlierStartupSteamLinkBuild("2.0.22", "5002322"))
+         // The full face layer is legacy only: no native build, 5002527 included, ever joins it.
+-        listOf("2.0.23" to "5002363", "2.0.24" to "5002395", "2.0.24" to "5002527").forEach { (version, code) ->
++        listOf("2.0.23" to "5002363", "2.0.24" to "5002395", "2.0.24" to "5002527", "2.0.25" to "5002532").forEach { (version, code) ->
+             assertFalse(Constants.isFullFacebridgeSteamLinkBuild(version, code), "$version/$code")
+         }
+         assertFalse(Constants.isTwoProjectionSteamLinkBuild("2.0.24", "5002527"))
+         assertFalse(Constants.isLegacyRecommendedSteamLinkBuild("2.0.24", "5002527"))
+ 
+         assertEquals(
+-            listOf(5001712, 5001812, 5001968, 5002244, 5002363, 5002395, 5002527),
++            listOf(5001712, 5001812, 5001968, 5002244, 5002363, 5002395, 5002527, 5002532),
+             Constants.COMPATIBILITIES_STEAM_LINK.versionCodes(),
+         )
+         assertEquals(
+-            listOf(5001712, 5001812, 5001968, 5002244, 5002363, 5002395, 5002527),
++            listOf(5001712, 5001812, 5001968, 5002244, 5002363, 5002395, 5002527, 5002532),
+             Constants.COMPATIBILITIES_STEAM_LINK_EXPERIMENTAL.versionCodes(),
+         )
+         // Patches not adapted to 5002527 keep exactly their previous scope.
+@@ -100,11 +100,11 @@ class ConstantsTest {
+             Constants.COMPATIBILITIES_STEAM_LINK_LEGACY_EXPERIMENTAL.versionCodes(),
+         )
+         assertEquals(
+-            listOf(5002363, 5002395, 5002527),
++            listOf(5002363, 5002395, 5002527, 5002532),
+             Constants.COMPATIBILITIES_STEAM_LINK_NATIVE_XR_EXPERIMENTAL.versionCodes(),
+         )
+         assertEquals(
+-            listOf("2.0.23" to 5002363, "2.0.24" to 5002395, "2.0.24" to 5002527),
++            listOf("2.0.23" to 5002363, "2.0.24" to 5002395, "2.0.24" to 5002527, "2.0.25" to 5002532),
+             Constants.COMPATIBILITIES_STEAM_LINK_NATIVE_XR.targets(),
+         )
+         assertEquals(listOf("2.0.23" to 5002363), Constants.COMPATIBILITIES_STEAM_LINK_5002363.targets())
+@@ -113,7 +113,7 @@ class ConstantsTest {
+             Constants.COMPATIBILITIES_STEAM_LINK_FULL_FACEBRIDGE.versionCodes(),
+         )
+         assertEquals(
+-            listOf("2.0.23" to 5002363, "2.0.24" to 5002395, "2.0.24" to 5002527),
++            listOf("2.0.23" to 5002363, "2.0.24" to 5002395, "2.0.24" to 5002527, "2.0.25" to 5002532),
+             Constants.COMPATIBILITIES_STEAM_LINK_MODERN_TONGUE_BRIDGE.targets(),
+         )
+         assertTrue(Constants.isModernTongueBridgeSteamLinkBuild("2.0.23", "5002363"))
+diff --git a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatchTest.kt b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatchTest.kt
+index 58f618d88b4d8666afaa5b1fbeebe4c0fdf89d83..641bc210b8b205d7fda29c9bc2e5a08631037e72 100644
+--- a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatchTest.kt
++++ b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/CodecsSupportPatchTest.kt
+@@ -31,7 +31,7 @@ class CodecsSupportPatchTest {
+             setOf(
+                 "2.0.20" to 5001712, "2.0.20" to 5001812,
+                 "2.0.21" to 5001968, "2.0.22" to 5002244, "2.0.23" to 5002363,
+-                "2.0.24" to 5002395, "2.0.24" to 5002527,
++                "2.0.24" to 5002395, "2.0.24" to 5002527, "2.0.25" to 5002532,
+             ),
+             targets,
+         )
+diff --git a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Controller5002527AdaptationTest.kt b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Controller5002527AdaptationTest.kt
+index 82cc7aedcb6f5dd5846aee1de51d56253e847137..b9a6b5da38f3d465f455e604f1e94a0f6e25ceb2 100644
+--- a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Controller5002527AdaptationTest.kt
++++ b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Controller5002527AdaptationTest.kt
+@@ -80,7 +80,7 @@ class Controller5002527AdaptationTest {
+     @Test
+     fun `battery hook scope is exact, keeps old bases and is inert on other packages`() {
+         assertEquals(
+-            setOf("2.0.23" to "5002363", "2.0.24" to "5002395", "2.0.24" to "5002527"),
++            setOf("2.0.23" to "5002363", "2.0.24" to "5002395", "2.0.24" to "5002527", "2.0.25" to "5002532"),
+             NATIVE_BATTERY_SETTINGS_BUILDS,
+         )
+         listOf("2.0.23" to "5002363", "2.0.24" to "5002395", "2.0.24" to "5002527").forEach { (v, c) ->
+diff --git a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatchTest.kt b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatchTest.kt
+index 5c27af2f7a0ce40477a8d1fd1d629d0b81d91d04..67a02817e3cb00cca3178d92524ddddaa1712d87 100644
+--- a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatchTest.kt
++++ b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/ControllerVelocityFramePatchTest.kt
+@@ -74,7 +74,7 @@ class ControllerVelocityFramePatchTest {
+         assertTrue(controllerVelocityFramePatch.dependencies.isEmpty(), controllerVelocityFramePatch.name)
+         val compatibilities = controllerVelocityFramePatch.compatibility.orEmpty()
+         assertTrue(compatibilities.none { it.name == EXPERIMENTAL_COMPATIBILITY_NAME }, controllerVelocityFramePatch.name)
+-        assertEquals(COMPATIBILITIES_STEAM_LINK, compatibilities, controllerVelocityFramePatch.name)
++        assertEquals(app.template.patches.shared.Constants.COMPATIBILITIES_STEAM_LINK_THROUGH_5002527, compatibilities, controllerVelocityFramePatch.name)
+         assertEquals(
+             setOf(
+                 "2.0.20" to 5001712, "2.0.20" to 5001812,
+diff --git a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/TelemetrySupportTest.kt b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/TelemetrySupportTest.kt
+index eee969340a94d179491e6e5abbd689deff46adba..703de5b0b98b846b41298ee6974285cde41ea3f4 100644
+--- a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/TelemetrySupportTest.kt
++++ b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/TelemetrySupportTest.kt
+@@ -35,7 +35,7 @@ class TelemetryPatchTest {
+         } }.toSet()
+         // Codecs Support ships on both 2.0.24 builds, but the optional telemetry payload has no
+         // 2.0.24 admission profile yet; enabling it there must fail closed.
+-        assertEquals((pairs + ("2.0.24" to "5002395") + ("2.0.24" to "5002527")).toSet(), actual)
++        assertEquals((pairs + ("2.0.24" to "5002395") + ("2.0.24" to "5002527") + ("2.0.25" to "5002532")).toSet(), actual)
+         pairs.forEach { (version, code) -> assertTrue(isTelemetrySteamLinkTarget(TELEMETRY_PACKAGE, version, code)) }
+         assertFalse(isTelemetrySteamLinkTarget(TELEMETRY_PACKAGE, "2.0.24", "5002395"))
+         assertFalse(isTelemetrySteamLinkTarget(TELEMETRY_PACKAGE, "2.0.24", "5002527"))
+diff --git a/patches/src/test/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchTest.kt b/patches/src/test/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchTest.kt
+index 9a50b2b74dc034450da1964345a2602ccb3ff728..086814056b3fdcd35f4c4f7d40ea770ae770489b 100644
+--- a/patches/src/test/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchTest.kt
++++ b/patches/src/test/kotlin/app/template/patches/steamlink/binary/BlueNoisePatchTest.kt
+@@ -24,7 +24,7 @@ class BlueNoisePatchTest {
+         assertEquals(setOf(
+                 "2.0.20" to 5001712, "2.0.20" to 5001812,
+                 "2.0.21" to 5001968, "2.0.22" to 5002244, "2.0.23" to 5002363,
+-                "2.0.24" to 5002395, "2.0.24" to 5002527),
++                "2.0.24" to 5002395, "2.0.24" to 5002527, "2.0.25" to 5002532),
+             blueNoisePatch.compatibility.orEmpty().flatMap { compatibility ->
+                 assertEquals("Steam Link", compatibility.name)
+                 compatibility.targets.map { target ->
+@@ -190,9 +190,9 @@ class BlueNoisePatchTest {
+             assertEquals(1, Regex(Regex.escape(marker)).findAll(variantText).count(), marker)
+         }
+         assertFalse(isConfiguredBlueNoiseHelper(byteArrayOf(1, 2, 3)))
+-        // Only the 5002527 layout selects the variant; every earlier layout keeps the standard payload.
++        // The inner-fade layouts select the variant; every earlier layout keeps the standard payload.
+         BLUE_NOISE_LAYOUTS.forEach { layout ->
+-            val expected = if (layout.code == "5002527") BlueNoiseHelperVariant.INNER_FADE else BlueNoiseHelperVariant.STANDARD
++            val expected = if (layout.code in setOf("5002527", "5002532")) BlueNoiseHelperVariant.INNER_FADE else BlueNoiseHelperVariant.STANDARD
+             assertEquals(expected, layout.helper, layout.code)
+         }
+     }
+diff --git a/patches/src/test/kotlin/util/PatchListGeneratorTest.kt b/patches/src/test/kotlin/util/PatchListGeneratorTest.kt
+index 58eb561f323b34d323f0e04d8566c64ba7e3d344..0ccdacc5b8dbd063298ed0b2fb2c42902bdd74b9 100644
+--- a/patches/src/test/kotlin/util/PatchListGeneratorTest.kt
++++ b/patches/src/test/kotlin/util/PatchListGeneratorTest.kt
+@@ -11,14 +11,14 @@ class PatchListGeneratorTest {
+     fun `stable compatibility emits exact build target only`() {
+         val latest = COMPATIBILITIES_STEAM_LINK.last()
+         assertEquals(
+-            listOf("2.0.24"),
++            listOf("2.0.25"),
+             targetsForReleaseChannel(latest, ReleaseChannel.STABLE).map { it.version },
+         )
+         assertEquals(
+-            listOf("2.0.24"),
++            listOf("2.0.25"),
+             targetsForReleaseChannel(latest, ReleaseChannel.EXPERIMENTAL).map { it.version },
+         )
+-        assertEquals(5002527, latest.targets.single().versionCodes!!.values.toSet().single())
++        assertEquals(5002532, latest.targets.single().versionCodes!!.values.toSet().single())
+     }
+ 
+     @Test
+@@ -31,14 +31,14 @@ class PatchListGeneratorTest {
+             ).isEmpty(),
+         )
+         assertEquals(
+-            listOf("2.0.24"),
++            listOf("2.0.25"),
+             targetsForReleaseChannel(
+                 experimental,
+                 ReleaseChannel.EXPERIMENTAL,
+             ).map { it.version },
+         )
+         assertEquals(
+-            5002527,
++            5002532,
+             experimental.targets.single().versionCodes!!.values.toSet().single(),
+         )
+     }
+diff --git a/settings.gradle.kts b/settings.gradle.kts
+index 62e9b495d5a7230848b6009d1ef0ba8b837b766a..8e0a0a9be3bdda06652189932749cd84d816c272 100644
+--- a/settings.gradle.kts
++++ b/settings.gradle.kts
+@@ -1,6 +1,9 @@
+ rootProject.name = "xr-porting-hub"
+ 
+ pluginManagement {
++    if (file("../morphe-patches-gradle-plugin").isDirectory) {
++        includeBuild("../morphe-patches-gradle-plugin")
++    }
+     repositories {
+         gradlePluginPortal()
+         google()
+@@ -26,3 +29,11 @@ gradle.beforeProject {
+     val projectOutput = if (path == ":") "root" else path.removePrefix(":").replace(':', '/')
+     layout.buildDirectory.set(externalBuildRoot.resolve("gradle/$projectOutput"))
+ }
++
++if (file("../morphe-patcher").isDirectory) {
++    includeBuild("../morphe-patcher") {
++        dependencySubstitution {
++            substitute(module("app.morphe:morphe-patcher")).using(project(":"))
++        }
++    }
++}
+diff --git a/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Beta5002532PortTest.kt b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Beta5002532PortTest.kt
+new file mode 100644
+index 0000000..d73790f
+--- /dev/null
++++ b/patches/src/test/kotlin/app/template/patches/steamlink/androidxr/Beta5002532PortTest.kt
+@@ -0,0 +1,166 @@
++package app.template.patches.steamlink.androidxr
++
++import app.morphe.patcher.patch.PatchException
++import app.template.patches.shared.Constants
++import app.template.patches.steamlink.binary.*
++import com.android.tools.smali.dexlib2.Opcode
++import com.android.tools.smali.dexlib2.Opcodes
++import com.android.tools.smali.dexlib2.dexbacked.DexBackedDexFile
++import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
++import com.android.tools.smali.dexlib2.iface.reference.MethodReference
++import java.io.File
++import java.security.MessageDigest
++import java.util.zip.ZipFile
++import org.junit.Assume.assumeTrue
++import kotlin.test.*
++
++class Beta5002532PortTest {
++    private val version = "2.0.25"
++    private val code = "5002532"
++    private val features = listOf(
++        gxrFacebridgePatch, microphoneInputPresetPatch, hmdOnlyPatch,
++        xrCodecsSupportPatch, unrestrictedBatteryUsagePatch, oledCalibrationPatch, blueNoisePatch,
++    )
++
++    @Test
++    fun `beta exposes only the adapted exact targets`() {
++        assertTrue(Constants.isNativeXrSteamLinkBuild(version, code))
++        assertTrue(isNativeBatterySettingsBuild(version, code))
++        features.forEach { patch ->
++            assertTrue(patch.default, patch.name)
++            assertTrue(patch.compatibility.orEmpty().any { c -> c.targets.any {
++                it.version == version && it.versionCodes.orEmpty().values.contains(code.toInt())
++            } }, patch.name)
++        }
++        listOf(controllerHalPosePatch, controllerVelocityFramePatch,
++            controllerGripHapticsPatch, controllerPoseTimePatch, networkOptimizationsPatch).forEach { patch ->
++            assertFalse(patch.compatibility.orEmpty().any { c -> c.targets.any {
++                it.version == version && it.versionCodes.orEmpty().values.contains(code.toInt())
++            } }, patch.name)
++        }
++        listOf("2.0.24" to code, version to "5002531", version to "5002533").forEach { (v, c) ->
++            assertFalse(Constants.isNativeXrSteamLinkBuild(v, c))
++            assertFalse(isNativeBatterySettingsBuild(v, c))
++        }
++        assertFalse(Constants.isFullFacebridgeSteamLinkBuild(version, code))
++        assertFalse(Constants.isHighResolutionSteamLinkBuild(version, code))
++    }
++
++    @Test
++    fun `codec helper variants are pinned and cannot substitute for each other`() {
++        val prefix = "/steamlink/androidxr/"
++        fun resource(name: String) = javaClass.getResourceAsStream(prefix + name)!!.use { it.readBytes() }
++        val old = resource(CODECS_SUPPORT_LIBRARY)
++        val beta = resource(CODECS_SUPPORT_BETA_LIBRARY)
++        val manifest = resource(CODECS_SUPPORT_MANIFEST)
++        validateCodecsSupportPayload(old, manifest)
++        validateCodecsSupportPayload(beta, manifest, beta5002532 = true)
++        assertFailsWith<PatchException> { validateCodecsSupportPayload(old, manifest, beta5002532 = true) }
++        assertFailsWith<PatchException> { validateCodecsSupportPayload(beta, manifest) }
++        assertTrue(beta.toString(Charsets.ISO_8859_1).contains("2.0.25/5002532"))
++    }
++
++    @Test
++    fun `actual beta microphone presets round trip and reject a changed function`() {
++        val stock = scene()
++        listOf("voice-communication", "voice-recognition", "unprocessed", "voice-performance").forEach { preset ->
++            val patched = patchNativeMicrophonePreset(stock, preset, version, code)
++            assertContentEquals(patched, patchNativeMicrophonePreset(patched, preset, version, code))
++            assertContentEquals(stock, patchNativeMicrophonePreset(patched, "voice-communication", version, code))
++        }
++        val changed = stock.copyOf().apply { this[0xf8db8] = 0 }
++        assertFailsWith<PatchException> { patchNativeMicrophonePreset(changed, "voice-recognition", version, code) }
++    }
++
++    @Test
++    fun `actual beta tongue and head pose edits reapply and reject changed instructions`() {
++        val stock = scene()
++        val tongue = patchModernTongueTransport(stock, version, code)
++        assertFalse(stock.contentEquals(tongue))
++        assertContentEquals(MODERN_TONGUE_REPLACEMENT, tongue.copyOfRange(0x144004, 0x14401c))
++        assertContentEquals(tongue, patchModernTongueTransport(tongue, version, code))
++        assertContentEquals(stock, patchModernTongueTransport(stock, "2.0.24", code))
++        val badTongue = stock.copyOf().apply { this[0x144004] = 0 }
++        assertFailsWith<PatchException> { patchModernTongueTransport(badTongue, version, code) }
++        val delayed = patchVisualDelay(tongue, 60, version, code)
++        assertFalse(delayed.contentEquals(tongue))
++        assertContentEquals(delayed, patchVisualDelay(delayed, 60, version, code))
++        val badPose = stock.copyOf().apply { this[0x102bb8] = 0 }
++        assertFailsWith<PatchException> { patchVisualDelay(badPose, 60, version, code) }
++        assertFailsWith<PatchException> { patchVisualDelay(stock, 4001, version, code) }
++    }
++
++    @Test
++    fun `actual beta video formats and both dithering layers compose with other native patches`() {
++        val stock = scene()
++        VideoOutputPrecision.entries.forEach { precision ->
++            val formatted = setProjectionSwapchainFormat(stock, precision, version, code)
++            assertContentEquals(formatted, setProjectionSwapchainFormat(formatted, precision, version, code))
++            assertContentEquals(stock, setProjectionSwapchainFormat(formatted, VideoOutputPrecision.SRGB8_HIGHP, version, code))
++        }
++        var current = patchNativeMicrophonePreset(stock, "voice-recognition", version, code)
++        current = patchModernTongueTransport(current, version, code)
++        current = patchVisualDelay(current, 60, version, code)
++        val prefix = paddedVideoShader(1.1f, 1.0f, VideoOutputPrecision.SRGB8_HIGHP, innerFade = true)
++        prefix.copyInto(current, 0xa3085)
++        var helper: ByteArray? = null
++        BlueNoiseLayer.entries.forEach { layer ->
++            val result = applyBlueNoiseLayer(current, version, code, FoveaMode.INPUT_10BIT, layer, existingHelper = helper)
++            current = result.scene
++            helper = assertNotNull(result.helper)
++            val repeated = applyBlueNoiseLayer(current, version, code, FoveaMode.INPUT_10BIT, layer, existingHelper = helper)
++            assertContentEquals(current, repeated.scene)
++            assertContentEquals(helper, repeated.helper)
++        }
++        assertTrue(isConfiguredBlueNoiseHelper(assertNotNull(helper)))
++        validateCodecsSupportScene(current, version, code)
++        BLUE_NOISE_LAYOUTS.single { it.code == code }.guards.forEach { guard ->
++            val changed = stock.copyOf().apply { this[guard.offset] = (this[guard.offset].toInt() xor 1).toByte() }
++            assertFailsWith<PatchException>("guard 0x${guard.offset.toString(16)}") {
++                applyBlueNoiseLayer(changed, version, code, FoveaMode.INPUT_10BIT, BlueNoiseLayer.FOVEA)
++            }
++        }
++    }
++
++    @Test
++    fun `actual beta codec anchors reject changed code`() {
++        val stock = scene()
++        validateCodecsSupportScene(stock, version, code)
++        listOf(0xfe254, 0xfebf8, 0xfe248).forEach { offset ->
++            val changed = stock.copyOf().apply { this[offset] = (this[offset].toInt() xor 1).toByte() }
++            assertFailsWith<PatchException> { validateCodecsSupportScene(changed, version, code) }
++        }
++        assertFailsWith<PatchException> { validateCodecsSupportScene(ByteArray(64), version, code) }
++    }
++
++    @Test
++    fun `actual beta onCreate has a safe consecutive parameter range for the battery hook`() {
++        val path = System.getenv("STEAMLINK_BETA_APK")
++        assumeTrue("BLOCKED: set STEAMLINK_BETA_APK to the original beta", path != null)
++        ZipFile(File(path!!)).use { zip ->
++            val dex = zip.getInputStream(zip.getEntry("classes.dex")).buffered().use {
++                DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it)
++            }
++            val clazz = dex.classes.single { it.type == "Lcom/valvesoftware/steamlink/SteamLink;" }
++            val method = clazz.methods.single { it.name == "onCreate" && it.parameterTypes == listOf("Landroid/os/Bundle;") }
++            val implementation = assertNotNull(method.implementation)
++            assertEquals(4, implementation.registerCount)
++            assertTrue(implementation.tryBlocks.isEmpty())
++            val first = implementation.instructions.first()
++            assertEquals(Opcode.INVOKE_SUPER, first.opcode)
++            val ref = (first as ReferenceInstruction).reference as MethodReference
++            assertEquals("Lorg/libsdl/app/SDLActivity;", ref.definingClass)
++            assertEquals("onCreate", ref.name)
++        }
++    }
++
++    private fun scene(): ByteArray {
++        val path = System.getenv("STEAMLINK_BETA_SCENE")
++        assumeTrue("BLOCKED: set STEAMLINK_BETA_SCENE to the original beta library", path != null)
++        return File(path!!).readBytes().also {
++            assertEquals(2_333_584, it.size)
++            val digest = MessageDigest.getInstance("SHA-256").digest(it).joinToString("") { b -> "%02x".format(b) }
++            assertEquals("fcac719a50d11ba4fd76e92cd9ce25366d901c924340c91041ecffae89fd1bf5", digest)
++        }
++    }
++}

@@ -83,8 +83,11 @@ severity **3**, release **2**, power-saver toggle **true**. However,
 | libbinder_ndk.so | `43392c7b1e812d52578a8bdffe03a08420c877fde922bdfcfdbe537afde72bf2` | Identical |
 | services.jar | `1e6f0e8e85020b0ed25bcb387bf7604c9d38c73519ad85df04e15968290b1018` | `ca2d7cdb6a549b7bdbef2c0ef1cab025b2b058f724fc4710911aedb7b9e71555` |
 
-No QUALITY package was built or activated. Porting it needs review of the
-changed policy code and then a controlled acquire/release test, camera-rate
-measurement and thermal observation. Replacing the hash alone would not
-establish compatibility. This keeps the requested investigation separate from
-the three experimental headset builds.
+The [AZJ2 port](../modules/openxr-quality/README.md) rebuilds the pinned controller
+after review of AZJ2's perception performance policy. The head-tracking service,
+mode values and thermal/battery-saver decisions match the controller's assumptions.
+Its patch accepts the verified AZJ2 policy hash and adds an exact build check;
+vendor ABI pins, overlay checks, critical thermal guard and recovery remain intact.
+The build runs upstream's policy, startup-gate and restore/update tests. Live
+acquire/release, camera-rate measurement, thermal observation and any tracking
+improvement remain unverified. The original AZF3 build still rejects the AZJ2 hash.

@@ -14,6 +14,14 @@ and signs the result. Selection uses the complete catalog from that stable
 release, including default-on support components such as Codecs Support.
 This is the rooted-headset profile: controller APK patches are excluded to avoid overlapping KernelSU controller fixes.
 
+## Experimental beta port
+
+The separately built **2.0.25 / 5002532** beta uses the local
+[exact-build port](beta-5002532/README.md). Its source diff, requirements,
+rebuild commands, credits and verification receipt are included there.
+The automatic builder below still follows the upstream released catalog;
+it does not select this custom beta port.
+
 ## What gets downloaded
 
 1. Valve's current **public and beta SteamVR APKs**, directly from its Steam

@@ -1,0 +1,44 @@
+{
+  "target": {
+    "package": "com.valvesoftware.steamlinkvr",
+    "version": "2.0.25",
+    "code": 5002532
+  },
+  "original_sha256": "3b0508ca8bac9b3f8f7aac64ddee83c40ed33226360ec67fdda23f4ea20d7bc0",
+  "original_signer_sha256": "5dff6b05761447a5bdf919ea88fc6fdf20d301e30b2315415c4d368ec0fbda45",
+  "steam_depot": {
+    "app": 250820,
+    "depot": 250824,
+    "branch": "beta",
+    "manifest": "5025230052748003982"
+  },
+  "upstream": "https://github.com/AngelDark92/xr-porting-hub/tree/42bef4a55bf76268c602665f03fd880e1f98d65f",
+  "local_port_by": "booinspace",
+  "patch_bundle_sha256": "23cebd64ab9e83023ff0e200977bee95d6cb8d0a7051c48dd017bb70999be690",
+  "morphe_version": "2.1.1",
+  "selected_patches": [
+    "Blue-noise dithering",
+    "Codecs Support",
+    "GXR face and tongue bridge",
+    "Microphone input preset",
+    "OLED color calibration",
+    "Unrestricted battery usage",
+    "Visual Delay Fix"
+  ],
+  "apk_sha256": "179fabe964d5a2f2d91157ee76e0ced0b857aac82c40de0893d49273322df0fa",
+  "apk_bytes": 41899823,
+  "signer_certificate_sha256": "a129066413947b73c78d4f561c4f3b09ea5e57ccbaaa6c7cc53ddcb831e50fa3",
+  "test_counts": {
+    "tests": 307,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 52
+  },
+  "beta_port_tests": {
+    "executed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "uses_actual_apk_and_library": true
+  },
+  "headset_runtime": "not tested; copied for manual installation"
+}

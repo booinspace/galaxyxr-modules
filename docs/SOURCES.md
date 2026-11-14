@@ -1,5 +1,17 @@
 # Sources, credits and licensing
 
+## OpenXR QUALITY
+
+[4uva4ek](https://github.com/4uva4ek) authored the
+[OpenXR QUALITY controller and Binder adapter](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/openxr-quality).
+The AZJ2 recipe fetches that exact commit and applies a narrow policy-identity,
+build-guard and metadata patch by [booinspace](https://github.com/booinspace).
+Thermal policy, vendor ABI pins, guardian, cleanup and failure handling remain
+upstream's implementation. No proprietary firmware or decompiled implementation
+is published. The built ZIP retains upstream and Android NDK notices, plus the
+port patch and build recipe. Upstream has no explicit repository-wide license;
+its code is not relicensed by this collection.
+
 ## Wi-Fi ADB
 
 [4uva4ek](https://github.com/4uva4ek) authored the

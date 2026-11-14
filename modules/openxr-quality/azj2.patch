@@ -1,0 +1,30 @@
+--- a/modules/openxr-quality/native/main.cpp
++++ b/modules/openxr-quality/native/main.cpp
+@@ -188,9 +188,12 @@
+ static void verify() {
+     char model[PROP_VALUE_MAX]{}; __system_property_get("ro.product.model", model);
+     if (std::strcmp(model, "SM-I610")) throw std::runtime_error("Unsupported model");
++    char build[PROP_VALUE_MAX]{}; __system_property_get("ro.build.display.id", build);
++    if (std::strcmp(build, "UML2.260301.001.I610UES3AZJ2"))
++        throw std::runtime_error("Unsupported build: this port requires SM-I610 AZJ2");
+     auto hashes = command({"/system/bin/sha256sum", "/vendor/bin/hw/android.hardware.perceptionhost", "/system/framework/services.jar"});
+     for (const char* hash : {"562d027ff604a428b4004882589910be5a21dc1ee7972556929784abd8f44ac5",
+-                             "1e6f0e8e85020b0ed25bcb387bf7604c9d38c73519ad85df04e15968290b1018"})
++                             "ca2d7cdb6a549b7bdbef2c0ef1cab025b2b058f724fc4710911aedb7b9e71555"})
+         if (hashes.find(hash) == std::string::npos) throw std::runtime_error("Unsupported perception host or system policy");
+     for (auto pair : {std::pair<const char*, const char*>{"config_perceptionEfficiencyTriggerThermalSeverity", "3"},
+                       {"config_perceptionEfficiencyReleaseThermalSeverity", "2"},
+--- a/modules/openxr-quality/module/module.prop
++++ b/modules/openxr-quality/module/module.prop
+@@ -1,7 +1,6 @@
+ id=gxr_openxr_quality
+-name=GXR OpenXR QUALITY
+-version=0.1.1
+-versionCode=2
+-author=4uva4ek
++name=Galaxy XR OpenXR QUALITY (AZJ2)
++version=0.1.2-azj2
++versionCode=3
++author=4uva4ek; AZJ2 port by booinspace
+ description=Holds camera tracking QUALITY during visible OpenXR sessions. Session and critical thermal guards; installed disabled. Requires verified KernelSU late-load soft restart.
+-updateJson=https://raw.githubusercontent.com/4uva4ek/galaxyxr-modules/main/updates/openxr-quality.json

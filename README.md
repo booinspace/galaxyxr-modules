@@ -50,6 +50,7 @@ entry point as a fallback, so activation does not depend on opening Action.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
+| OpenXR QUALITY (experimental AZJ2 port) | Holds the head-tracking QUALITY camera request during visible OpenXR sessions, with thermal and cleanup guards; device activation untested | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/openxr-quality); AZJ2 port by [booinspace](https://github.com/booinspace) | [Install, build and validate](modules/openxr-quality/README.md) |
 | Wi-Fi ADB | Authenticated ADB TCP on port 5555; unchanged upstream 1.0.2 packaged for this collection and confirmed working on AZJ2 | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/wifi-adb); pinned packaging by [booinspace](https://github.com/booinspace) | [Install, connect and build](modules/wifi-adb/README.md) |
 | Window controls | Curvature, white-rim removal, pill auto-hide, wrist rotation, aligned move/resize boundaries, 10× movement distance, sliders, 50 Home pins, and movable/resizable app pins over immersive apps with gaze fading and continued VR input | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, app pins, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410); dispatch patch based on [Kolektori's work](https://github.com/frida-packages/frida-java-bridge/pull/401) | [Install, use, build and recover](docs/CURVATURE.md) |
 | Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
@@ -70,9 +71,10 @@ checks, but still needs a live VRCFaceTracking test. These builds are separate
 from the previously published release linked above.
 
 The [OpenXR QUALITY investigation](docs/LIGHTHOUSE-AND-QUALITY.md#openxr-quality)
-explains its conditional 60 FPS camera request and the changed AZJ2 policy
-identity that blocks a direct install. No QUALITY build or native Home Space
-Lighthouse bridge is included.
+explains its conditional 60 FPS camera request. The [AZJ2 port](modules/openxr-quality/README.md)
+rebuilds the controller for the reviewed framework policy and keeps the vendor,
+thermal and recovery checks. Live activation and any tracking improvement remain
+unverified. No native Home Space Lighthouse bridge is included.
 
 The Window Controls runtime stayed enabled and resumed automatically after two
 consecutive GXR Soft restarts on the AZJ2 headset. The second device test
@@ -147,6 +149,7 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 
 ## Build and source
 
+- [OpenXR QUALITY AZJ2 build](scripts/build-openxr-quality-azj2.py)
 - [Unmodified upstream Wi-Fi ADB packaging](scripts/build-wifi-adb-azj2.py)
 - [Combined window build](scripts/build-window-curvature-azj2.py)
 - [Shared borderless agent](scripts/curvature-borderless-agent.mjs)
