@@ -111,7 +111,8 @@ device export records 3,784 suppressed positive-alpha scrim frames and no fatal
 error. Extended idle/wake remains unverified.
 
 Install the combined Window Controls ZIP through **KernelSU GXR → Modules →
-Install from storage**. Keep separate Borderless and Rotation modules off.
+Install from storage**. Keep separate Borderless and any previously installed
+standalone Rotation module off.
 The combined module owns all window features through one injector, Java
 bridge, menu layout and rollback supervisor.
 
@@ -149,11 +150,15 @@ See the [window guide](docs/CURVATURE.md) for setup, limits and recovery.
 
 ## Build and source
 
+The module builders share [gxr_build.py](scripts/gxr_build.py) for packaging,
+installer validation and common compiler helpers. See [building and checks](docs/BUILDING.md).
+Rotation is included in Window Controls; there is no separate Rotation package.
+
 - [OpenXR QUALITY AZJ2 build](scripts/build-openxr-quality-azj2.py)
 - [Unmodified upstream Wi-Fi ADB packaging](scripts/build-wifi-adb-azj2.py)
 - [Combined window build](scripts/build-window-curvature-azj2.py)
 - [Shared borderless agent](scripts/curvature-borderless-agent.mjs)
-- [Rotation helper source](modules/window-rotation/android/local/gxr/rotation/)
+- [Rotation helper source](modules/window-controls/android/local/gxr/rotation/)
 - [Bread ports and host checks](docs/BREAD-AZJ2.md)
 - [QuestLHSync AZJ2 build](scripts/build-questlhsync-azj2.py)
 - [Framebuffer10 AZJ2 build](scripts/build-framebuffer10-azj2.py)

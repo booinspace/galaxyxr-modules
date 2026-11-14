@@ -1,7 +1,0 @@
-Experimental AZJ2 window rotation; installs DISABLED.
-First test: disable borderless and curvature, fully reboot, regain temporary root.
-Enable rotation and tap Action to start; a Soft restart is not required.
-Open an ordinary app window's top menu for Pitch, Yaw, Roll and Reset.
-Sliders apply when released. Start with small angles and test input and dragging.
-Turn the module off to restore its local window rotations.
-See README.md for recovery and build instructions.

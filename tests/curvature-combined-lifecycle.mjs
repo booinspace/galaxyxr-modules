@@ -11,7 +11,7 @@ const borderlessDelay = process.argv.includes('--no-borderless-delay') ? 0 : 450
 const leaseMatch = /const SUPERVISOR_LEASE_MS = (\d+);/.exec(source);
 const supervisorLeaseMs = leaseMatch === null ? 2500 : Number(leaseMatch[1]);
 if (leaseMatch !== null) {
-    const flags = readFileSync(new URL('../modules/window-rotation/android/local/gxr/rotation/WindowFeatures.java', import.meta.url), 'utf8');
+    const flags = readFileSync(new URL('../modules/window-controls/android/local/gxr/rotation/WindowFeatures.java', import.meta.url), 'utf8');
     assert.equal(supervisorLeaseMs, Number(/SUPERVISOR_LEASE_MS = (\d+);/.exec(flags)[1]));
 }
 

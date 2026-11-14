@@ -6,11 +6,12 @@ byte-identical on AZJ2; the controller verifies the new input/output hashes.
 import argparse
 import hashlib
 from pathlib import Path
-import runpy
 import shutil
 import subprocess
 import tempfile
 from zipfile import ZipFile
+
+from gxr_build import export_source, package, replace_exact as replace
 
 ROOT=Path(__file__).resolve().parents[1]
 COMMIT='9f096dfc79e72f180410bcfa5ba32b566734f62b'
@@ -18,12 +19,6 @@ URL='https://github.com/4uva4ek/galaxyxr-modules.git'
 STOCK='bd51da246ce12452b0069f3fc35a24389b7705c33819e37ab1916c5a6b3e8cd7'
 PATCHED='3869de4f1b2d46f607089486a3b35997b15ebff0be7b9082d6af6d2a2eb64caf'
 EDIT_SCRIPT='f9aef5110e1ea6acad72bfb20b36aab5668491d0666d3d3111d8b511c418668a'
-
-
-def replace(path,old,new):
-    text=path.read_text()
-    if text.count(old)!=1: raise ValueError('Pinned source pattern mismatch: '+str(path))
-    path.write_text(text.replace(old,new))
 
 
 def port(source):
@@ -98,10 +93,7 @@ def main():
         subprocess.run(['git','-C',str(args.upstream),'diff','--quiet','HEAD'],check=True)
     with tempfile.TemporaryDirectory(prefix='gxr-fb10-azj2-') as temporary:
         work=Path(temporary)/'source'
-        if args.upstream: shutil.copytree(args.upstream,work,ignore=shutil.ignore_patterns('.git','dist','__pycache__'))
-        else:
-            subprocess.run(['git','clone','--no-checkout',URL,str(work)],check=True)
-            subprocess.run(['git','-C',str(work),'checkout','--detach',COMMIT],check=True)
+        export_source(work,URL,COMMIT,checkout=args.upstream)
         port(work)
         subprocess.run(['python3',str(work/'tools/build.py'),'framebuffer10','--ndk',str(args.ndk.resolve())],check=True,cwd=work)
         result,= (work/'dist/framebuffer10').glob('*.zip')
@@ -113,7 +105,8 @@ def main():
         payload['bin/source/port-package.py']=(ROOT/'scripts/port-package.py').read_bytes()
         payload['bin/source/framebuffer10-azj2-controller.cpp']=(work/'modules/framebuffer10/native/main.cpp').read_bytes()
         payload['bin/source/AZJ2-port.txt']=(work/'modules/framebuffer10/native/AZJ2-port.txt').read_bytes()
-        runpy.run_path(str(ROOT/'scripts/port-package.py'))['package'](
+        payload['bin/source/gxr_build.py']=(ROOT/'scripts/gxr_build.py').read_bytes()
+        package(
             args.output/'gxr-framebuffer10-azj2-0.1.0-disabled.zip',payload,executables=['bin/gxr-fb10-gate'])
 
 

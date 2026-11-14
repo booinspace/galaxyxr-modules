@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import runpy
+import sys
 import socket
 import struct
 import subprocess
@@ -10,6 +11,7 @@ import tempfile
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 MODULE = ROOT / 'modules/root-face-tracking'
 build = runpy.run_path(str(ROOT / 'scripts/build-root-face-tracking-azj2.py'))
 

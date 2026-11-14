@@ -2,12 +2,13 @@
 
 import argparse
 from pathlib import Path
-import runpy
 import shutil
 import subprocess
 import sys
 import tempfile
 from zipfile import ZipFile
+
+from gxr_build import check_installer_entries, replace_exact as replace, resolve_tools, validate_package
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = "https://github.com/BlueScorpioVR/galaxyxr-modules.git"
@@ -24,20 +25,9 @@ DISPATCH_PATCH_SHA = "441a84e4b7fb5462eafd5e8b712fb6fbbe43603515cd6dd6ff98b8e458
 SUPERVISOR_LEASE_MS = 5000
 
 
-def replace(path: Path, old: str, new: str) -> None:
-    data = path.read_text()
-    if data.count(old) != 1:
-        raise ValueError(f"Expected one occurrence of {old!r} in {path}")
-    path.write_text(data.replace(old, new))
-
-
 def check_gxr_installer_payload(package: Path) -> None:
-    """Apply this manager's startup/state restrictions after upstream ZIP checks."""
-    forbidden = runpy.run_path(str(ROOT / "scripts/port-package.py"))["FORBIDDEN"]
     with ZipFile(package) as archive:
-        unsupported = forbidden.intersection(archive.namelist())
-    if unsupported:
-        raise ValueError("Unsupported GXR startup/state payload: " + ", ".join(sorted(unsupported)))
+        check_installer_entries(archive.namelist())
 
 
 def patch_art_cmc(work: Path, module: Path) -> None:
@@ -121,7 +111,7 @@ def integrate_rotation(module: Path) -> None:
     """Share Curvature's bridge, menu owner and supervisor with Rotation."""
     destination = module / "android/local/gxr/rotation"
     destination.mkdir(parents=True)
-    for source in sorted((ROOT / "modules/window-rotation/android/local/gxr/rotation").glob("*.java")):
+    for source in sorted((ROOT / "modules/window-controls/android/local/gxr/rotation").glob("*.java")):
         shutil.copyfile(source, destination / source.name)
     props = module / "module.prop"
     replace(props, "version=0.1.7-azj2-experimental", "version=0.1.19-azj2-experimental")
@@ -832,11 +822,7 @@ def main() -> None:
         parser.error("--no-startup-age requires --no-borderless-delay")
     if args.experimental_boundary and not args.integrated_rotation:
         parser.error("--experimental-boundary requires --integrated-rotation")
-    for name in ("java", "ecj", "r8", "android_jar"):
-        path = getattr(args, name).resolve()
-        if not path.is_file():
-            parser.error(f"Missing {name}: {path}")
-        setattr(args, name, path)
+    resolve_tools(parser, args, ("java", "ecj", "r8", "android_jar"))
     args.output = args.output.resolve()
     args.cache = args.cache.resolve()
     with tempfile.TemporaryDirectory(prefix="gxr-curvature-azj2-") as temporary:
@@ -1060,7 +1046,7 @@ def main() -> None:
         package = args.output / f"gxr-window-curvature-{version}-disabled.zip"
         subprocess.run([sys.executable, "tools/check_window_curvature_package.py", str(package)],
                        cwd=work, check=True)
-        check_gxr_installer_payload(package)
+        validate_package(package, executables=("bin/frida-inject",))
         print(package)
 
 

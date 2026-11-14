@@ -2,10 +2,12 @@
 import hashlib
 from pathlib import Path
 import runpy
+import sys
 import unittest
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 
 
 class WifiAdbPackageTest(unittest.TestCase):

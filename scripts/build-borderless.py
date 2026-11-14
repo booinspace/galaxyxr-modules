@@ -9,7 +9,8 @@ from pathlib import Path
 import tarfile
 import tempfile
 import urllib.request
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+
+from gxr_build import package, validate_arm64
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "modules/borderless-windows"
@@ -42,8 +43,7 @@ def build(cache: Path, output: Path) -> Path:
     injector = lzma.decompress(archive)
     if hashlib.sha256(injector).hexdigest() != BINARY_SHA256:
         raise ValueError("Frida binary hash mismatch")
-    if injector[:4] != b"\x7fELF" or int.from_bytes(injector[18:20], "little") != 183:
-        raise ValueError("Expected an Android arm64 ELF")
+    validate_arm64(injector)
     bridge = fetch(
         cache,
         "frida-java-bridge-7.0.13.tgz",
@@ -72,6 +72,8 @@ def build(cache: Path, output: Path) -> Path:
     payload["bin/source/agent.js"] = (MODULE / "agent.js").read_bytes()
     payload["bin/source/build-borderless.py"] = Path(__file__).read_bytes()
 
+    payload["bin/source/gxr_build.py"] = (ROOT / "scripts/gxr_build.py").read_bytes()
+
     with tempfile.TemporaryDirectory(prefix="gxr-borderless-") as temporary:
         project = Path(temporary)
         (project / "agent.js").write_bytes(payload["bin/source/agent.js"])
@@ -95,25 +97,8 @@ def build(cache: Path, output: Path) -> Path:
             raise ValueError(f"Frida compiler diagnostics: {diagnostics}")
         payload["bin/agent.js"] = bundle.encode()
 
-    payload["SHA256SUMS"] = "".join(
-        f"{hashlib.sha256(data).hexdigest()}  {name}\n"
-        for name, data in sorted(payload.items()) if name != "disable"
-    ).encode()
-    output.mkdir(parents=True, exist_ok=True)
     result = output / "gxr-borderless-azj2-0.2.0-disabled.zip"
-    with ZipFile(result, "w", compression=ZIP_DEFLATED) as zipped:
-        for name, data in sorted(payload.items()):
-            info = ZipInfo(name, (2026, 11, 11, 0, 0, 0))
-            info.compress_type = ZIP_DEFLATED
-            info.create_system = 3
-            mode = 0o100755 if name.endswith(".sh") or name == "bin/frida-inject" else 0o100644
-            info.external_attr = mode << 16
-            zipped.writestr(info, data)
-    digest = hashlib.sha256(result.read_bytes()).hexdigest()
-    result.with_suffix(".zip.sha256").write_text(f"{digest}  {result.name}\n")
-    print(result)
-    print(digest)
-    return result
+    return package(result, payload, executables=("bin/frida-inject",), timestamp=(2026, 11, 11, 0, 0, 0))
 
 
 if __name__ == "__main__":

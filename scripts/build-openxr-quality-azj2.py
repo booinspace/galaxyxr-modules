@@ -1,15 +1,15 @@
 """Build pinned OpenXR QUALITY with the reviewed AZJ2 policy identity."""
 import argparse
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
-import runpy
 import subprocess
 import sys
 import tempfile
 from zipfile import ZipFile
+
+from gxr_build import export_source, package, validate_arm64, validate_package
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = 'https://github.com/4uva4ek/galaxyxr-modules.git'
@@ -21,13 +21,8 @@ OLD_SERVICES = '1e6f0e8e85020b0ed25bcb387bf7604c9d38c73519ad85df04e15968290b1018
 
 def validate(archive):
     """Reject mismatched native identities, unsafe layout and altered payloads."""
-    forbidden = runpy.run_path(str(ROOT / 'scripts/port-package.py'))['FORBIDDEN']
+    validate_package(archive, executables=('bin/gxr-quality',))
     with ZipFile(archive) as z:
-        names = z.namelist()
-        if len(names) != len(set(names)) or z.testzip() is not None:
-            raise ValueError('Invalid ZIP')
-        if forbidden.intersection(names) or z.read('disable') != b'' or z.read('skip_mount') != b'':
-            raise ValueError('Invalid GXR startup layout')
         props = dict(line.split('=', 1) for line in z.read('module.prop').decode().splitlines() if '=' in line)
         if (props['id'], props['version'], props['versionCode']) != ('gxr_openxr_quality', '0.1.2-azj2', '3'):
             raise ValueError('Incorrect update identity')
@@ -38,19 +33,9 @@ def validate(archive):
                     '562d027ff604a428b4004882589910be5a21dc1ee7972556929784abd8f44ac5',
                     '1da138baee18d16352938d7d33598ed715be8ba31d2bdea23940537001c9f24c',
                     '43392c7b1e812d52578a8bdffe03a08420c877fde922bdfcfdbe537afde72bf2')
-        if native[:6] != b'\x7fELF\x02\x01' or native[18:20] != b'\xb7\x00':
-            raise ValueError('Expected Android ARM64 ELF')
+        validate_arm64(native)
         if any(value.encode() not in native for value in required) or OLD_SERVICES.encode() in native:
             raise ValueError('Native firmware guards do not target AZJ2')
-        if not (z.getinfo('bin/gxr-quality').external_attr >> 16) & 0o111:
-            raise ValueError('Native executable permission missing')
-        sums = dict((name, digest) for digest, name in
-                    (line.split('  ', 1) for line in z.read('SHA256SUMS').decode().splitlines()))
-        if set(sums) != set(names) - {'disable', 'SHA256SUMS'}:
-            raise ValueError('Incomplete manifest')
-        for name, expected in sums.items():
-            if hashlib.sha256(z.read(name)).hexdigest() != expected:
-                raise ValueError('Payload checksum mismatch: ' + name)
 
 
 def main():
@@ -61,18 +46,8 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='gxr-quality-azj2-') as temporary:
         work = Path(temporary)
-        checkout = args.upstream.resolve() if args.upstream else work / 'upstream'
-        if not args.upstream:
-            subprocess.run(['git', 'init', '-q', str(checkout)], check=True)
-            subprocess.run(['git', '-C', str(checkout), 'fetch', '--depth=1', UPSTREAM, COMMIT], check=True)
-        actual = subprocess.check_output(['git', '-C', str(checkout), 'rev-parse', COMMIT + '^{commit}'], text=True).strip()
-        if actual != COMMIT:
-            parser.error('Pinned upstream commit is required')
-        data = subprocess.check_output(['git', '-C', str(checkout), 'archive', '--format=zip',
-                                        COMMIT, 'modules/openxr-quality', 'tools/build.py'])
         source = work / 'source'
-        with ZipFile(io.BytesIO(data)) as z:
-            z.extractall(source)
+        export_source(source, UPSTREAM, COMMIT, ('modules/openxr-quality', 'tools/build.py'), args.upstream)
         patch = ROOT / 'modules/openxr-quality/azj2.patch'
         subprocess.run(['git', 'apply', '--check', str(patch)], cwd=source, check=True)
         subprocess.run(['git', 'apply', str(patch)], cwd=source, check=True)
@@ -82,11 +57,11 @@ def main():
         fixtures = work / 'fixtures'
         fixtures.mkdir()
         paths = []
-        for name, package, client in [('idle', 'com.android.systemui', 1),
+        for name, app, client in [('idle', 'com.android.systemui', 1),
                                       ('vr', 'com.valvesoftware.steamlinkvr', 7),
                                       ('paused', 'com.samsung.gallery', -1)]:
             path = fixtures / (name + '.txt')
-            path.write_text(f'XR Clients state:\n{package}: id={max(client, 1)}, state=running\n'
+            path.write_text(f'XR Clients state:\n{app}: id={max(client, 1)}, state=running\n'
                             f'Current Visible XR ClientId={client}\nCurrent Visible Managed FSM XR ClientId=-1\nStats since reset:\n')
             paths.append(str(path))
         policy = work / 'policy-test'
@@ -106,10 +81,11 @@ def main():
         payload['bin/source/azj2.patch'] = patch.read_bytes()
         payload['bin/source/build-openxr-quality-azj2.py'] = Path(__file__).read_bytes()
         payload['bin/source/port-package.py'] = (ROOT / 'scripts/port-package.py').read_bytes()
+        payload['bin/source/gxr_build.py'] = (ROOT / 'scripts/gxr_build.py').read_bytes()
         payload['bin/source/README.md'] = (ROOT / 'modules/openxr-quality/README.md').read_bytes()
         args.output.mkdir(parents=True, exist_ok=True)
         result = args.output / 'gxr-openxr-quality-azj2-0.1.2-disabled.zip'
-        runpy.run_path(str(ROOT / 'scripts/port-package.py'))['package'](result, payload, executables=('bin/gxr-quality',))
+        package(result, payload, executables=('bin/gxr-quality',))
         validate(result)
         print('AZJ2 build and host policy/lifecycle checks passed; device activation remains untested.')
 

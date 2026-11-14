@@ -1,38 +1,16 @@
 """Build the three disabled AZJ2 ports of BreadDoesStuff's MIT-licensed modules."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import subprocess
 import tempfile
-from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
+from zipfile import ZipFile
+
+from gxr_build import class_archive, dex, package, resolve_tools, sha256 as sha
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = "93dcf733068d0f57d53b21b79f37b1f38f573e6f"
 MODULES = ("mic-gain-boost", "passthrough-anywhere", "no-lowlight-toast")
-
-
-def sha(data):
-    return hashlib.sha256(data).hexdigest()
-
-
-def class_archive(directory, target):
-    with ZipFile(target, "w", ZIP_DEFLATED) as archive:
-        for source in sorted(directory.rglob("*.class")):
-            archive.write(source, source.relative_to(directory).as_posix())
-
-
-def dex(args, jar, stubs, destination):
-    destination.mkdir()
-    command = [str(args.java), "-cp", str(args.r8), "com.android.tools.r8.D8", "--release", "--min-api", "34",
-               "--lib", str(args.android_jar), "--output", str(destination)]
-    if stubs is not None:
-        command += ["--classpath", str(stubs)]
-    subprocess.run(command + [str(jar)], check=True)
-    result = (destination / "classes.dex").read_bytes()
-    if not result.startswith(b"dex\n") or len(list(destination.glob("*.dex"))) != 1:
-        raise ValueError("Expected one helper DEX")
-    return result
 
 
 def main():
@@ -42,10 +20,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "releases")
     parser.add_argument("--module", choices=MODULES, help="Build only the requested port")
     args = parser.parse_args()
-    for name in ("java", "javac", "r8", "android_jar"):
-        value = getattr(args, name).resolve()
-        if not value.is_file(): parser.error(f"Missing tool: {name}")
-        setattr(args, name, value)
+    resolve_tools(parser, args, ("java", "javac", "r8", "android_jar"))
     args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="gxr-bread-build-") as temporary:
         work = Path(temporary)
@@ -93,31 +68,16 @@ def main():
             if payload["disable"] or payload["skip_mount"]:
                 raise ValueError("Release must install disabled with skip_mount")
             payload["bin/source/build-bread-azj2.py"] = Path(__file__).read_bytes()
+            payload["bin/source/gxr_build.py"] = (ROOT / "scripts/gxr_build.py").read_bytes()
             receipt = {"upstream": "BreadDoesStuff/galaxy-xr-modules", "commit": UPSTREAM,
                        "target": "SM-I610 I610UES3AZJ2", "status": "experimental; device behavior untested",
                        "tools": {key: sha(getattr(args, key).read_bytes()) for key in ("java", "javac", "r8", "android_jar")},
                        "source": {path: sha(data) for path, data in payload.items() if path.startswith("bin/source/")}}
             payload["bin/build-info.json"] = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
-            payload["SHA256SUMS"] = "".join(f"{sha(data)}  {path}\n" for path, data in sorted(payload.items())
-                                            if path != "disable").encode()
             version = next(line.split("=", 1)[1].split("-", 1)[0]
                            for line in payload["module.prop"].decode().splitlines() if line.startswith("version="))
             output = args.output / f"gxr-{name}-azj2-{version}-disabled.zip"
-            with ZipFile(output, "w", ZIP_DEFLATED) as archive:
-                for path, data in sorted(payload.items()):
-                    entry = ZipInfo(path, (2026, 11, 11, 0, 0, 0))
-                    entry.create_system = 3; entry.compress_type = ZIP_DEFLATED
-                    entry.external_attr = (0o100755 if path.endswith(".sh") else 0o100644) << 16
-                    archive.writestr(entry, data)
-            with ZipFile(output) as archive:
-                if archive.testzip() is not None or set(archive.namelist()) != set(payload):
-                    raise ValueError("Package integrity check failed")
-                for path, data in payload.items():
-                    if archive.read(path) != data: raise ValueError("Package mismatch: " + path)
-                for forbidden in ("system.prop", "post-fs-data.sh", "post-mount.sh", "sepolicy.rule"):
-                    if forbidden in archive.namelist(): raise ValueError("Unsupported GXR startup payload")
-            output.with_suffix(".zip.sha256").write_text(f"{sha(output.read_bytes())}  {output.name}\n")
-            print(output)
+            package(output, payload, timestamp=(2026, 11, 11, 0, 0, 0))
 
 
 if __name__ == "__main__": main()

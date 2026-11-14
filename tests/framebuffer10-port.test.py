@@ -3,11 +3,13 @@ import argparse
 import os
 from pathlib import Path
 import runpy
+import sys
 import shutil
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--upstream', type=Path, required=True)
 parser.add_argument('--cxx', default=shutil.which('g++-14') or shutil.which('g++'))

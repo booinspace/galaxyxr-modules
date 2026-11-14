@@ -2,11 +2,13 @@
 import hashlib
 from pathlib import Path
 import runpy
+import sys
 import tempfile
 import unittest
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 BUILDER = runpy.run_path(str(ROOT / 'scripts/build-openxr-quality-azj2.py'))
 PACKAGE = ROOT / 'releases/gxr-openxr-quality-azj2-0.1.2-disabled.zip'
 

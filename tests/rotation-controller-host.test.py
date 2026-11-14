@@ -370,7 +370,7 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
             paths.append(path)
-        production = ROOT / "modules/window-rotation/android/local/gxr/rotation"
+        production = ROOT / "modules/window-controls/android/local/gxr/rotation"
         paths.extend(production / name for name in ("RotationController.java", "RotationMath.java", "WindowFeatures.java"))
         output = work / "classes"
         subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",

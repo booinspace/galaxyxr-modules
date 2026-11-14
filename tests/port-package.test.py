@@ -2,11 +2,13 @@
 import hashlib
 from pathlib import Path
 import runpy
+import sys
 import tempfile
 import unittest
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 api = runpy.run_path(str(ROOT / 'scripts/port-package.py'))
 package = api['package']
 

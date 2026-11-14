@@ -5,12 +5,12 @@ import hashlib
 import io
 import json
 from pathlib import Path
-import platform
-import runpy
 import shutil
 import subprocess
 import tarfile
 import tempfile
+
+from gxr_build import ndk_compiler, package, validate_arm64
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'modules/root-face-tracking'
@@ -27,12 +27,7 @@ def main():
     parser.add_argument('--ndk', required=True, type=Path)
     parser.add_argument('--output', type=Path, default=ROOT / 'releases')
     args = parser.parse_args()
-    ndk = args.ndk.resolve()
-    if 'Pkg.Revision = 29.0.14206865' not in (ndk / 'source.properties').read_text():
-        parser.error('Android NDK 29.0.14206865 required')
-    host = {'Linux': 'linux-x86_64', 'Darwin': 'darwin-x86_64'}[platform.system()]
-    compiler = ndk / 'toolchains/llvm/prebuilt' / host / 'bin/aarch64-linux-android29-clang'
-    package = runpy.run_path(str(ROOT / 'scripts/port-package.py'))['package']
+    compiler = ndk_compiler(args.ndk, '29.0.14206865', 29)
     with tempfile.TemporaryDirectory(prefix='gxr-root-face-build-') as temporary:
         work = Path(temporary)
         source = work / 'source'
@@ -41,15 +36,14 @@ def main():
         subprocess.run([str(compiler), '-O2', '-Wall', '-Wextra', '-Werror',
                         '-Wl,-z,max-page-size=16384', str(source / 'headset/gxr_alvr.c'), '-lm', '-o', str(binary)], check=True)
         blob = binary.read_bytes()
-        if blob[:6] != b'\x7fELF\x02\x01' or blob[18:20] != b'\xb7\x00':
-            raise ValueError('Expected Android arm64 ELF')
+        validate_arm64(blob)
         payload = {p.relative_to(MODULE).as_posix(): p.read_bytes() for p in MODULE.rglob('*')
                    if p.is_file() and 'upstream' not in p.relative_to(MODULE).parts}
         payload['bin/gxr_alvr'] = blob
         payload['LICENSE.upstream'] = (MODULE / 'upstream/LICENSE').read_bytes()
         # Include all source and build inputs, with stable archive metadata.
         bundled = [p for p in MODULE.rglob('*') if p.is_file()]
-        bundled += [Path(__file__), ROOT / 'scripts/port-package.py', ROOT / 'tests/root-face-tracking.test.py', ROOT / 'tests/port-package.test.py']
+        bundled += [Path(__file__), ROOT / 'scripts/port-package.py', ROOT / 'scripts/gxr_build.py', ROOT / 'tests/root-face-tracking.test.py', ROOT / 'tests/port-package.test.py']
         archive_bytes = io.BytesIO()
         with tarfile.open(fileobj=archive_bytes, mode='w') as archive:
             for p in sorted(bundled):

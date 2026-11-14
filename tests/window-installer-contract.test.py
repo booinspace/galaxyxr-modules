@@ -1,11 +1,13 @@
 """Check the GXR-specific startup contract missing from the upstream ZIP checker."""
 from pathlib import Path
 import runpy
+import sys
 import tempfile
 import unittest
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 check = runpy.run_path(str(ROOT / "scripts/build-window-curvature-azj2.py"))["check_gxr_installer_payload"]
 forbidden = runpy.run_path(str(ROOT / "scripts/port-package.py"))["FORBIDDEN"]
 

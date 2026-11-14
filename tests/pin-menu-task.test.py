@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="gxr-pin-task-check-") as directory:
         sources.append(str(path))
     sources.extend(str(ROOT / "modules/window-controls/android/local/gxr/pins" / name)
                    for name in ("PinRequest.java", "PinCli.java", "PinnedPanels.java", "PinnedResize.java", "FadePolicy.java", "BackdropPolicy.java", "PanelRay.java"))
-    sources.append(str(ROOT / "modules/window-rotation/android/local/gxr/rotation/WindowFeatures.java"))
+    sources.append(str(ROOT / "modules/window-controls/android/local/gxr/rotation/WindowFeatures.java"))
     subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8",
                     "-proc:none", "-failOnWarning", "-classpath", str(args.android_jar),
                     "-d", str(work / "classes"), *sources], check=True)

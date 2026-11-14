@@ -290,7 +290,7 @@ def main():
             paths.append(path)
         production = ROOT / "modules/window-controls/android/local/gxr/pins"
         paths.extend(production / name for name in ("PinnedPanels.java", "PinnedResize.java", "FadePolicy.java", "PanelRay.java", "BackdropPolicy.java"))
-        paths.append(ROOT / "modules/window-rotation/android/local/gxr/rotation/WindowFeatures.java")
+        paths.append(ROOT / "modules/window-controls/android/local/gxr/rotation/WindowFeatures.java")
         output = work / "classes"
         subprocess.run([str(args.java), "-jar", str(args.ecj), "-source", "1.8", "-target", "1.8", "-proc:none",
                         "-cp", classpath, "-d", str(output), *(str(path) for path in paths)], check=True)
