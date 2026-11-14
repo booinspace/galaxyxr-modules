@@ -6,10 +6,10 @@ This collection builds upstream **1.0.2** at commit
 metadata, author or update feed. The local build recipe and documentation are
 by [booinspace](https://github.com/booinspace).
 
-The AZJ2 filename identifies this collection's build. It is not a firmware
-compatibility claim or an AZJ2-specific fork. No firmware offsets, private XR
-APIs, kernel modules, native compiler or Samsung source are used. Live operation
-on `SM-I610 / I610UES3AZJ2` still needs testing.
+The AZJ2 filename identifies this collection's build. It is not an AZJ2-specific
+fork. No firmware offsets, private XR APIs, kernel modules, native compiler or
+Samsung source are used. The owner tested the module on an
+`SM-I610 / I610UES3AZJ2` headset and confirmed Wi-Fi ADB works.
 
 ## Install and connect
 
@@ -64,8 +64,9 @@ filename and writes its SHA-256 sidecar. The ZIP itself is byte-identical to
 the upstream builder's output. `--upstream /path/to/repository` reuses a local
 Git object database containing that commit; working-tree edits are not used.
 
-These checks do not verify AZJ2 SELinux policy, actual RSA authorization,
-network reachability or cold-boot timing. No headset is contacted by the build.
+These host checks do not verify AZJ2 SELinux policy, actual RSA authorization,
+network reachability or cold-boot timing. No headset is contacted by the build;
+the owner separately confirmed operation on the AZJ2 headset.
 
 The pinned upstream has no explicit repository-wide license. The recipe links
 and fetches that source without relicensing it; the original author remains

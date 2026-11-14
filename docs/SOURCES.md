@@ -9,7 +9,8 @@ runs its lifecycle tests and original builder, and copies the resulting 1.0.2
 ZIP without modifying its bytes. The original module ID, author and update feed
 remain intact. The recipe, collection docs and package checks are by
 [booinspace](https://github.com/booinspace). No upstream runtime source is
-vendored or rewritten for AZJ2, and no headset compatibility claim is made.
+vendored or rewritten for AZJ2. The owner confirmed that the packaged module
+works on their AZJ2 headset; no other firmware was tested.
 The pinned upstream has no explicit repository-wide license; its code is not
 relicensed by this collection. Review upstream terms before redistributing
 its generated ZIP.
