@@ -252,3 +252,12 @@ The script fetches official tool/patch releases and upstream-published APK
 sources at run time. Downloaded code keeps its upstream license. This repository
 ships no Steam Link APK, signing key or bundled copy of those tools in the
 builder package. Each local build records the exact versions and hashes.
+
+## Saved Workspaces
+
+`modules/saved-workspaces` and `scripts/curvature-workspaces-agent.mjs` are by
+booinspace, under the included MIT license. The standalone module reuses this
+repository’s cooperative port runtime and the existing
+[BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules) Window Controls
+host. It does not bundle proprietary Android XR APKs, framework classes or
+decompiled source.

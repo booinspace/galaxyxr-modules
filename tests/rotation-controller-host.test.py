@@ -161,6 +161,7 @@ public final class RotationControllerTest {
     public static final class Director {
         final Handler mainHandler = new Handler(android.os.Looper.myLooper());
         final Decorations windowDecorByTaskId = new Decorations();
+        final Object taskOperations = new Object(), desktopTaskRepository = new Object(), xrTaskOperations = new Object();
     }
     public static final class Pill {
         final View view = new View();

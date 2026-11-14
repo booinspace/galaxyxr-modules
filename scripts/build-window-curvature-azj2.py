@@ -886,6 +886,66 @@ def integrate_quick_settings(module: Path, audio_mixer: bool) -> None:
             (source / "webroot/controls.html").read_text() + '\n    <section aria-labelledby="pins-heading">')
 
 
+
+def integrate_workspaces(module: Path) -> None:
+    """Host the separate saved-workspaces module without another SystemUI injector."""
+    shutil.copytree(ROOT / "modules/window-controls/android/local/gxr/workspacehost",
+                    module / "android/local/gxr/workspacehost")
+    shutil.copyfile(ROOT / "scripts/curvature-workspaces-agent.mjs", module / "agent/curvature-workspaces-agent.mjs")
+    agent = module / "agent/main.js"
+    replace(agent, "import {installHomePins} from './curvature-home-pins-agent.mjs';",
+            "import {installHomePins} from './curvature-home-pins-agent.mjs';\n"
+            "import {installWorkspaces} from './curvature-workspaces-agent.mjs';")
+    replace(agent, "let homePins = null;", "let homePins = null;\nlet workspaces = null;")
+    replace(agent, "                            pinFactory = factory;",
+            "                            pinFactory = factory;\n"
+            "                            workspaces = installWorkspaces(Java, factory, repository, rotation,\n"
+            "                                ensureWorkspaceCurvature, () => !stopped && nowMs() - lastSupervisor < SUPERVISOR_LEASE_MS, nowMs, log);")
+    replace(agent, "function poll() {", """function ensureWorkspaceCurvature(id, value, bridge) {
+    let entry = tasks.get(id);
+    let found = null;
+    try {
+        if (entry === undefined) {
+            if (value === 0) return true;
+            const candidate = repository.getTaskSubspace(id);
+            if (candidate === null || tasks.size >= 32) return false;
+            found = Java.retain(Java.cast(candidate, Task));
+            if (!taskEligible(found)) return false;
+            const baseline = observed.get(id);
+            if (!baseline || nowMs() - baseline.now > 2000 || baseline.curvature !== 0) return false;
+            const session = Java.retain(Session.supervised(id, found.getCpmWindowNode()));
+            entry = {task: found, handle: String(found.getCpmWindowNode().getNativeHandle()), session,
+                attachments: [], started: nowMs(), deadline: nowMs() + 2000};
+            found = null; tasks.set(id, entry);
+        }
+        if (!currentNode(entry) || !taskEligible(entry.task)) return false;
+        if (bridge.desktopTask(id) === null) return false;
+        bridge.configureWidth(entry.session, id);
+        entry.session.set(value);
+        return true;
+    } finally { if (found !== null) found.$dispose(); }
+}
+
+function poll() {""")
+    replace(agent, "            if (!stopped && borderless !== null) borderless.pulse();",
+            "            if (!stopped && borderless !== null) borderless.pulse();\n"
+            "            if (workspaces !== null) workspaces.pulse(tasks);")
+    replace(agent, "    try { if (rotation !== null) rotation.shutdown(); }",
+            "    try { if (workspaces !== null) workspaces.stop(); }\n"
+            "    catch (error) { log('WORKSPACES_STOP_ERROR', {error: String(error)}); }\n"
+            "    try { if (rotation !== null) rotation.shutdown(); }")
+    replace(agent, "(audioMixer === null || audioMixer.isStopped())) {",
+            "(audioMixer === null || audioMixer.isStopped()) &&\n"
+            "                (workspaces === null || workspaces.isStopped())) {")
+    replace(agent, "        const quick = parseQuickSettingsCommand(command);",
+            "        if (workspaces !== null && workspaces.accept(command)) return;\n"
+            "        const quick = parseQuickSettingsCommand(command);")
+    replace(agent, "log('STATE', {quickSettings:",
+            "log('STATE', {workspaces: workspaces === null ? null : workspaces.status(), quickSettings:")
+    replace(module / "module.prop", "version=0.1.68-azj2-quick-controls", "version=0.1.70-azj2-workspaces-host")
+    replace(module / "module.prop", "versionCode=169", "versionCode=171")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM, help="Pinned upstream URL or local clone")
@@ -903,6 +963,7 @@ def main() -> None:
                         help="Build 0.1.64 with native per-app volume controls (requires --no-startup-age)")
     parser.add_argument("--quick-settings-gesture", action="store_true",
                         help="Build 0.1.68 with the left-pinch native Quick Settings shortcut (requires --no-startup-age)")
+    parser.add_argument("--workspaces-host", action="store_true", help="Add the optional standalone Saved Workspaces host (requires --audio-mixer and --quick-settings-gesture)")
     # Keep old build commands working; boundary alignment is now part of the combined build.
     parser.add_argument("--experimental-boundary", action="store_true", help=argparse.SUPPRESS)
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
@@ -920,6 +981,8 @@ def main() -> None:
         parser.error("--audio-mixer requires the complete --no-startup-age combined build")
     if args.quick_settings_gesture and not args.no_startup_age:
         parser.error("--quick-settings-gesture requires the complete --no-startup-age combined build")
+    if args.workspaces_host and not (args.audio_mixer and args.quick_settings_gesture):
+        parser.error("--workspaces-host requires --audio-mixer and --quick-settings-gesture")
     if args.experimental_boundary and not args.integrated_rotation:
         parser.error("--experimental-boundary requires --integrated-rotation")
     resolve_tools(parser, args, ("java", "ecj", "r8", "android_jar"))
@@ -1047,6 +1110,9 @@ def main() -> None:
                 subprocess.run([sys.executable, str(ROOT / "tests/quick-settings-settings.test.py")], check=True)
                 subprocess.run([sys.executable, str(ROOT / "tests/quick-settings-toggle-host.test.py"),
                                 "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
+            if args.workspaces_host:
+                integrate_workspaces(module)
+                subprocess.run(["node", "--test", str(ROOT / "tests/workspaces-agent.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/pin-supervisor.test.py"),
                             str(module / "control.sh")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
@@ -1157,7 +1223,8 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.68-azj2-quick-controls" if args.quick_settings_gesture else
+        version = ("0.1.70-azj2-workspaces-host" if args.workspaces_host else
+                   "0.1.68-azj2-quick-controls" if args.quick_settings_gesture else
                    "0.1.64-azj2-audio-mixer" if args.audio_mixer else
                    "0.1.63-azj2-no-age-test" if args.no_startup_age else
                    "0.1.62-azj2-startup-test" if args.no_borderless_delay else

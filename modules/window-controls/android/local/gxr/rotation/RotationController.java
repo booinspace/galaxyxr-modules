@@ -29,6 +29,8 @@ public final class RotationController {
     private volatile String grabStatus = "idle";
     private Handler captionOwner;
     private Runnable captionScan;
+    private volatile Handler workspaceOwner;
+    private volatile Object workspaceTaskOperations, workspaceDesktopTasks, workspaceXrOperations;
 
     static Object field(Object object, String name) throws Exception {
         for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
@@ -121,6 +123,36 @@ public final class RotationController {
         }
     }
 
+    public Handler workspaceHandler() { return workspaceOwner; }
+    public boolean workspaceIsHome() { return homeSpace; }
+    public Object workspaceOperations() { return workspaceTaskOperations; }
+    public Object workspaceDesktopTask(int id) throws Exception { return call(workspaceDesktopTasks, "getTask", new Class<?>[]{int.class}, id); }
+    public void workspaceHomeSpace() throws Exception { call(workspaceXrOperations, "switchToHomeSpace"); }
+    public boolean workspaceRotationEnabled() { return enabled; }
+
+    public synchronized float[] workspaceRotation(int taskId) {
+        for (Session session : sessions) if (session.taskId == taskId && !session.finished) return session.orientation.clone();
+        return new float[] {1, 0, 0, 0};
+    }
+
+    /** Restore through the existing same-node session so sliders, grabs and cleanup agree. */
+    public synchronized void restoreWorkspaceRotation(Object repository, int taskId, float[] value) throws Exception {
+        if (workspaceOwner == null || Looper.myLooper() != workspaceOwner.getLooper()) throw new IllegalStateException("Wrong workspace owner thread");
+        float[] q = RotationMath.normalize(value);
+        if (stopping || !enabled || SystemClock.uptimeMillis() - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS) {
+            throw new IllegalStateException("Enable Rotation before restoring this workspace");
+        }
+        Object task = call(repository, "getTaskSubspace", new Class<?>[] {int.class}, taskId);
+        if (task == null || !is2d(task) || !canRotate(taskId)) throw new IllegalStateException("Workspace window is not ready");
+        Object node = call(task, "getCpmWindowNode");
+        Session session = session(repository, node, taskId);
+        session.orientation = q;
+        int[] degrees = RotationMath.degrees(q);
+        System.arraycopy(degrees, 0, session.angles, 0, 3);
+        session.grabId = -1;
+        session.update();
+    }
+
     /** The existing caption hook supplies the real view owner for grab callbacks. */
     public synchronized void bindWindow(Object decor, View root) throws Exception {
         if (stopping) return;
@@ -135,6 +167,10 @@ public final class RotationController {
     public synchronized void bindExistingWindows(Object director) throws Exception {
         if (stopping || captionScan != null) return;
         captionOwner = (Handler) field(director, "mainHandler");
+        workspaceOwner = captionOwner;
+        workspaceTaskOperations = field(director, "taskOperations");
+        workspaceDesktopTasks = field(director, "desktopTaskRepository");
+        workspaceXrOperations = field(director, "xrTaskOperations");
         captionScan = () -> {
             synchronized (RotationController.this) {
                 captionScan = null;

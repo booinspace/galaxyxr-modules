@@ -57,6 +57,7 @@ function session({homePinsUnavailable = false} = {}) {
     };
     const context = {
         parseFeatureCommand, applyFeatureSettings,
+        installWorkspaces: () => ({accept: () => false, pulse() {}, stop() {}, isStopped: () => true, status: () => ({})}),
         installAudioMixer: () => ({stop() {}, isStopped: () => true, status: () => 'test'}),
         parseQuickSettingsCommand: () => null,
         installQuickSettingsGesture: () => ({configure() {}, stop() {}, getDiagnostics: () => ({})}),
