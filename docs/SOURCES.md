@@ -1,5 +1,19 @@
 # Sources, credits and licensing
 
+## Wi-Fi ADB
+
+[4uva4ek](https://github.com/4uva4ek) authored the
+[Wi-Fi ADB module](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/wifi-adb).
+The local recipe fetches commit `9f096dfc79e72f180410bcfa5ba32b566734f62b`,
+runs its lifecycle tests and original builder, and copies the resulting 1.0.2
+ZIP without modifying its bytes. The original module ID, author and update feed
+remain intact. The recipe, collection docs and package checks are by
+[booinspace](https://github.com/booinspace). No upstream runtime source is
+vendored or rewritten for AZJ2, and no headset compatibility claim is made.
+The pinned upstream has no explicit repository-wide license; its code is not
+relicensed by this collection. Review upstream terms before redistributing
+its generated ZIP.
+
 ## Window controls
 
 [BlueScorpioVR/galaxyxr-modules](https://github.com/BlueScorpioVR/galaxyxr-modules/tree/dd1a8915e3bbb8ea44f99033c8bc0dc8fdc22bd2/modules/window-curvature)
