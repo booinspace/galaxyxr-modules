@@ -8,10 +8,10 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.60](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.13/gxr-window-curvature-0.1.60-azj2-no-age-test-disabled.zip)
-and verify it against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.13/SHA256SUMS).
+Download [Window Controls 0.1.63](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.14/gxr-window-curvature-0.1.63-azj2-no-age-test-disabled.zip)
+and verify it against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.14/SHA256SUMS).
 Other published module ZIPs are on the
-[AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.13).
+[AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.14).
 Built packages and checksums are published through GitHub Releases. This
 repository tracks source, documentation, tests and build scripts.
 
