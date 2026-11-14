@@ -22,6 +22,45 @@ Rotation now belongs to Window Controls. Its unchanged Java helpers live under
 agent and module scripts have been removed. Existing conflict checks remain so
 an old installed Rotation module cannot run alongside the combined module.
 
+## Fedora WSL container
+
+The module builders can run directly on Fedora with the tools below installed.
+For an isolated build environment, run this from the Fedora repository:
+
+```sh
+cd ~/Documents/repos/galaxyxr-modules
+./scripts/build-fedora.sh --shell
+```
+
+The wrapper asks for sudo to use rootful Podman, builds the image and opens Bash
+at `/repo`. It includes JDK 21, Python, Frida 17.23.3, Node.js 22, ECJ 3.39.0,
+CMake and the host C/C++ tools. It mounts your existing `~/Android/Sdk` read-only;
+that SDK must contain Android command-line tools (including their Kotlin
+libraries), platform `android-37.0`, build-tools `37.0.0` and both NDKs listed
+below. SDK packages and licenses stay in that existing installation.
+No host JDK, Python, Node.js or Frida installation is needed for container builds.
+
+Inside the container, the tool paths are already set:
+
+```sh
+python3 scripts/build-wear-dim.py \
+  --java "$JAVA_HOME/bin/java" --javac "$JAVA_HOME/bin/javac" \
+  --r8 "$GXR_R8" --android-jar "$GXR_ANDROID_JAR" --output "$GXR_OUTPUT"
+python3 scripts/build-questlhsync-azj2.py --ndk "$GXR_NDK28" --output "$GXR_OUTPUT"
+```
+
+`GXR_ECJ`, `GXR_CACHE` and `GXR_NDK29` are also available for the other existing
+build recipes. Pass `--output "$GXR_OUTPUT"` so artifacts go to the host's
+`.build/output/`; `/repo` is read-only. `exit` leaves the container. To run one
+command without an interactive shell, use `./scripts/build-fedora.sh -- COMMAND`.
+The Windows PowerShell/.NET companion build still runs separately on Windows.
+
+This wrapper uses host networking because the current WSL chroot cannot create
+Podman's nftables bridge. Start Fedora through its normal `enter-fedora` launcher
+so `/dev`, `/proc`, `/sys` and `/run` are mounted. A direct `chroot /mnt/fedora ...`
+does not prepare those mounts. The wrapper checks all four mounts before
+starting Podman; it does not change the host's mount setup.
+
 ## Requirements and commands
 
 Use Linux or WSL for the complete headset build. Java builders need a JDK,
