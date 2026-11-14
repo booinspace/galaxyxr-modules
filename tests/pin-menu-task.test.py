@@ -15,6 +15,12 @@ public final class ComponentName {
     public String flattenToString() { return pkg + "/" + pkg + ".Main"; }
 }
 """,
+    "android/content/pm/ApplicationInfo.java": """package android.content.pm;
+public final class ApplicationInfo {
+    public static final int FLAG_SYSTEM = 1, FLAG_UPDATED_SYSTEM_APP = 128;
+    public int uid = 10174, flags;
+}
+""",
     "android/app/ActivityManager.java": """package android.app;
 import android.content.ComponentName;
 public final class ActivityManager {
@@ -30,6 +36,7 @@ public final class ActivityManager {
     "local/gxr/pins/PinMenuTaskTest.java": """package local.gxr.pins;
 import android.app.ActivityManager.RunningTaskInfo;
 import android.content.ComponentName;
+import android.content.pm.ApplicationInfo;
 public final class PinMenuTaskTest {
     private static final PinRequest REQUEST = new PinRequest(1000, 42, "app.valid");
     private static void rejects(RunningTaskInfo task) throws Exception {
@@ -38,6 +45,23 @@ public final class PinMenuTaskTest {
         throw new AssertionError("Unrelated task was admitted");
     }
     public static void main(String[] ignored) throws Exception {
+        ApplicationInfo app = new ApplicationInfo();
+        for (int flags : new int[] {0, ApplicationInfo.FLAG_SYSTEM,
+                ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP}) {
+            app.flags = flags;
+            for (String pkg : new String[] {"app.valid", "com.google.android.apps.youtube.xr", "other.preinstalled.app"}) {
+                if (!PinCli.allowedApplication(app, pkg)) throw new AssertionError("Launchable app rejected: " + pkg);
+            }
+            for (String pkg : new String[] {"com.android.systemui", "me.weishu.kernelsu"}) {
+                if (PinCli.allowedApplication(app, pkg)) throw new AssertionError("Recovery process accepted: " + pkg);
+            }
+        }
+        for (int uid : new int[] {0, 1000, 9999}) {
+            app.uid = uid;
+            if (PinCli.allowedApplication(app, "core.process")) throw new AssertionError("Core UID accepted");
+        }
+        app.uid = 10000;
+        if (!PinCli.allowedApplication(app, "app.valid")) throw new AssertionError("First application UID rejected");
         PinCli.verifyMenuTask(REQUEST, new RunningTaskInfo());
         RunningTaskInfo task = new RunningTaskInfo(); task.taskId++; rejects(task);
         task = new RunningTaskInfo(); task.userId = 10; rejects(task);
@@ -66,7 +90,7 @@ public final class PinMenuTaskTest {
             PinCli.runShellCommand("sh", "-c", "exit 17");
             throw new AssertionError("A failed launch was accepted");
         } catch (IllegalStateException expected) { }
-        System.out.println("Pin task guard: exact task, owner, ordinary mode, package and visibility passed");
+        System.out.println("Pin task guard: app eligibility, protected UIDs, exact task, owner, ordinary mode, package and visibility passed");
     }
 }
 """,

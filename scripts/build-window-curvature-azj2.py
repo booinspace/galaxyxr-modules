@@ -794,6 +794,98 @@ def remove_startup_age_delay(module: Path) -> None:
             "Checking Android readiness and SystemUI identity; no fixed startup delay.")
 
 
+def integrate_audio_mixer(module: Path) -> None:
+    """Add native app-volume rows through the existing patched SystemUI bridge."""
+    source = ROOT / "modules/audio-mixer/android/local/gxr/audio"
+    destination = module / "android/local/gxr/audio"
+    destination.mkdir(parents=True)
+    for path in sorted(source.glob("*.java")):
+        shutil.copyfile(path, destination / path.name)
+    (module / "AUDIO-MIXER-LICENSE.txt").write_bytes((ROOT / "modules/audio-mixer/LICENSE").read_bytes())
+    builder = module.parents[1] / "tools/build_window_curvature.py"
+    replace(builder, "    payload['bin/frida-inject'] = binary",
+            "    payload['bin/licenses/audio-mixer-MIT.txt'] = (MODULE / 'AUDIO-MIXER-LICENSE.txt').read_bytes()\n"
+            "    payload['bin/frida-inject'] = binary")
+    shutil.copyfile(ROOT / "scripts/curvature-audio-agent.mjs", module / "agent/curvature-audio-agent.mjs")
+    agent = module / "agent/main.js"
+    replace(agent, "import {installHomePins} from './curvature-home-pins-agent.mjs';",
+            "import {installHomePins} from './curvature-home-pins-agent.mjs';\n"
+            "import {installAudioMixer} from './curvature-audio-agent.mjs';")
+    replace(agent, "let homePins = null;", "let homePins = null;\nlet audioMixer = null;")
+    replace(agent, "                            pinFactory = factory;",
+            "                            pinFactory = factory;\n"
+            "                            audioMixer = installAudioMixer(Java, factory, log);")
+    replace(agent, "    try { if (homePins !== null) homePins.stop(); }",
+            "    try { if (audioMixer !== null) audioMixer.stop(); }\n"
+            "    catch (error) { log('AUDIO_MIXER_STOP_ERROR', {error: String(error)}); }\n"
+            "    try { if (homePins !== null) homePins.stop(); }")
+    replace(agent, "(immersivePins === null || immersivePins.isRestored())) {",
+            "(immersivePins === null || immersivePins.isRestored()) &&\n"
+            "                (audioMixer === null || audioMixer.isStopped())) {")
+    replace(agent, "log('STATE', {supervisor:",
+            "log('STATE', {audioMixer: audioMixer === null ? 'off' : audioMixer.status(), supervisor:")
+    replace(module / "module.prop", "version=0.1.63-azj2-no-age-test", "version=0.1.64-azj2-audio-mixer")
+    replace(module / "module.prop", "versionCode=164", "versionCode=165")
+    with (module / "webroot/index.html").open("r+") as page:
+        contents = page.read().replace('    <section aria-labelledby="pins-heading">',
+            '    <section aria-labelledby="audio-heading"><h2 id="audio-heading">App audio mixer · experimental</h2>\n'
+            '      <p>Open the headset’s normal volume popup or expanded volume panel. App mixer adds 0–100% sliders for playing media apps, a bypass switch and Reset app volumes. Settings are remembered.</p>\n'
+            '      <p class="hint">AudioTrack and MediaPlayer output only. Unsupported player types are labelled; master volume, calls, alarms and Android audio focus stay unchanged.</p>\n'
+            '    </section>\n    <section aria-labelledby="pins-heading">')
+        page.seek(0)
+        page.write(contents)
+        page.truncate()
+
+
+def integrate_quick_settings(module: Path, audio_mixer: bool) -> None:
+    """Observe the left-hand gesture and dispatch AZJ2's native Quick Settings action."""
+    source = ROOT / "modules/quick-settings-gesture"
+    shutil.copytree(source / "android/local/gxr/controls", module / "android/local/gxr/controls")
+    shutil.copyfile(ROOT / "scripts/curvature-quick-settings-agent.mjs", module / "agent/curvature-quick-settings-agent.mjs")
+    shutil.copyfile(source / "settings.sh", module / "quick-settings-gesture.sh")
+    shutil.copyfile(source / "webroot/gesture.js", module / "webroot/gesture.js")
+    builder = module.parents[1] / "tools/build_window_curvature.py"
+    replace(builder, "'features.sh', 'pins.sh',", "'features.sh', 'pins.sh', 'quick-settings-gesture.sh',")
+    (module / "QUICK-SETTINGS-LICENSE.txt").write_bytes((source / "LICENSE").read_bytes())
+    replace(builder, "    payload['bin/frida-inject'] = binary",
+            "    payload['bin/licenses/quick-settings-MIT.txt'] = (MODULE / 'QUICK-SETTINGS-LICENSE.txt').read_bytes()\n"
+            "    payload['bin/frida-inject'] = binary")
+    agent = module / "agent/main.js"
+    replace(agent, "import {installHomePins} from './curvature-home-pins-agent.mjs';",
+            "import {installHomePins} from './curvature-home-pins-agent.mjs';\n"
+            "import {installQuickSettingsGesture, parseQuickSettingsCommand} from './curvature-quick-settings-agent.mjs';")
+    replace(agent, "let homePins = null;", "let homePins = null;\nlet quickSettings = null;")
+    replace(agent, "                            pinFactory = factory;",
+            "                            pinFactory = factory;\n"
+            "                            quickSettings = installQuickSettingsGesture(Java, factory,\n"
+            "                                () => !stopped && nowMs() - lastSupervisor < SUPERVISOR_LEASE_MS, nowMs, log);")
+    replace(agent, "    try { if (homePins !== null) homePins.stop(); }",
+            "    try { if (quickSettings !== null) quickSettings.stop(); }\n"
+            "    catch (error) { log('QUICK_SETTINGS_STOP_ERROR', {error: String(error)}); }\n"
+            "    try { if (homePins !== null) homePins.stop(); }")
+    replace(agent, "        const values = parseFeatureCommand(command);",
+            "        const quick = parseQuickSettingsCommand(command);\n"
+            "        if (quick !== null && !stopped && quickSettings !== null) {\n"
+            "            Java.perform(() => quickSettings.configure(quick.enabled, quick.holdMs));\n"
+            "            return;\n        }\n"
+            "        const values = parseFeatureCommand(command);")
+    state_key = "audioMixer:" if audio_mixer else "supervisor:"
+    replace(agent, "log('STATE', {" + state_key,
+            "log('STATE', {quickSettings: quickSettings === null ? null : quickSettings.getDiagnostics(), " + state_key)
+    control = module / "control.sh"
+    replace(control, '       printf "%s\\n" "$selected" >&3 || exit 1',
+            '       printf "%s\\n" "$selected" >&3 || exit 1\n'
+            '       quick_settings=$(sh "$MODDIR/quick-settings-gesture.sh" wire 3>&-) || quick_settings="quick-settings 0 500"\n'
+            '       printf "%s\\n" "$quick_settings" >&3 || exit 1')
+    old_version = "0.1.64-azj2-audio-mixer" if audio_mixer else "0.1.63-azj2-no-age-test"
+    replace(module / "module.prop", "version=" + old_version, "version=0.1.68-azj2-quick-controls")
+    replace(module / "module.prop", "versionCode=" + ("165" if audio_mixer else "164"), "versionCode=169")
+    replace(module / "webroot/index.html", '  <script src="pins.js" defer></script>',
+            '  <script src="pins.js" defer></script>\n  <script src="gesture.js" defer></script>')
+    replace(module / "webroot/index.html", '    <section aria-labelledby="pins-heading">',
+            (source / "webroot/controls.html").read_text() + '\n    <section aria-labelledby="pins-heading">')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM, help="Pinned upstream URL or local clone")
@@ -807,6 +899,10 @@ def main() -> None:
                         help="Build the separate 0.1.62 timing test, retaining the 90-second SystemUI age guard")
     parser.add_argument("--no-startup-age", action="store_true",
                         help="Build the separate 0.1.63 zero-age experiment (requires --no-borderless-delay)")
+    parser.add_argument("--audio-mixer", action="store_true",
+                        help="Build 0.1.64 with native per-app volume controls (requires --no-startup-age)")
+    parser.add_argument("--quick-settings-gesture", action="store_true",
+                        help="Build 0.1.68 with the left-pinch native Quick Settings shortcut (requires --no-startup-age)")
     # Keep old build commands working; boundary alignment is now part of the combined build.
     parser.add_argument("--experimental-boundary", action="store_true", help=argparse.SUPPRESS)
     for name in ("java", "ecj", "r8", "android-jar", "cache", "output"):
@@ -820,6 +916,10 @@ def main() -> None:
         parser.error("--no-borderless-delay requires the combined --integrated-rotation build")
     if args.no_startup_age and not args.no_borderless_delay:
         parser.error("--no-startup-age requires --no-borderless-delay")
+    if args.audio_mixer and not args.no_startup_age:
+        parser.error("--audio-mixer requires the complete --no-startup-age combined build")
+    if args.quick_settings_gesture and not args.no_startup_age:
+        parser.error("--quick-settings-gesture requires the complete --no-startup-age combined build")
     if args.experimental_boundary and not args.integrated_rotation:
         parser.error("--experimental-boundary requires --integrated-rotation")
     resolve_tools(parser, args, ("java", "ecj", "r8", "android_jar"))
@@ -935,6 +1035,18 @@ def main() -> None:
                 remove_borderless_delay(module)
             if args.no_startup_age:
                 remove_startup_age_delay(module)
+            if args.audio_mixer:
+                integrate_audio_mixer(module)
+                subprocess.run([sys.executable, str(ROOT / "tests/audio-mixer.test.py"),
+                                "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
+                subprocess.run(["node", "--test", str(ROOT / "tests/audio-mixer-agent.test.mjs")], check=True)
+            if args.quick_settings_gesture:
+                integrate_quick_settings(module, args.audio_mixer)
+                subprocess.run(["node", "--test", str(ROOT / "tests/quick-settings-gesture.test.mjs"),
+                                str(ROOT / "tests/quick-settings-ui.test.mjs")], check=True)
+                subprocess.run([sys.executable, str(ROOT / "tests/quick-settings-settings.test.py")], check=True)
+                subprocess.run([sys.executable, str(ROOT / "tests/quick-settings-toggle-host.test.py"),
+                                "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/pin-supervisor.test.py"),
                             str(module / "control.sh")], check=True)
             subprocess.run(["node", "--test", str(ROOT / "tests/window-boundary.test.mjs")], check=True)
@@ -1028,6 +1140,12 @@ def main() -> None:
                 "Install this ZIP as an update to the existing Window Controls module. It installs disabled. "
                 "The guide below describes the normal delayed build; its extra 45-second wait does not apply to this test.\n\n"
                 + readme.read_text())
+        if args.audio_mixer:
+            readme = module / "README.md"
+            readme.write_text((ROOT / "modules/audio-mixer/README.md").read_text() + "\n\n" + readme.read_text())
+        if args.quick_settings_gesture:
+            readme = module / "README.md"
+            readme.write_text((ROOT / "modules/quick-settings-gesture/README.md").read_text() + "\n\n" + readme.read_text())
         replace(work / "tools/build_window_curvature.py",
                 "temp_root = Path.home() / 'AppData/Local/Temp/opencode'", "temp_root = None")
 
@@ -1039,7 +1157,9 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.63-azj2-no-age-test" if args.no_startup_age else
+        version = ("0.1.68-azj2-quick-controls" if args.quick_settings_gesture else
+                   "0.1.64-azj2-audio-mixer" if args.audio_mixer else
+                   "0.1.63-azj2-no-age-test" if args.no_startup_age else
                    "0.1.62-azj2-startup-test" if args.no_borderless_delay else
                    "0.1.61-azj2-experimental" if args.integrated_rotation else
                    ("0.1.7" if args.integrated_borderless else "0.1.4" if args.stagger_borderless else "0.1.6") + "-azj2-experimental")

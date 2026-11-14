@@ -76,12 +76,18 @@ public final class PinCli {
                 task.baseIntent.hasCategory(MARKER) && task.baseActivity != null &&
                 task.baseActivity.getPackageName().equals(pkg);
     }
+    /** Preinstalled apps may pin; core processes and the controls needed for recovery may not. */
+    static boolean allowedApplication(ApplicationInfo info, String pkg) {
+        return info.uid >= 10000 && !pkg.equals("me.weishu.kernelsu") && !pkg.equals("com.android.systemui");
+    }
+
     private static Intent launcher(String pkg) throws Exception {
         Object thread = Class.forName("android.app.ActivityThread").getMethod("systemMain").invoke(null);
         Context context = (Context) invoke(thread, "getSystemContext", new Class<?>[0]);
         ApplicationInfo info = context.getPackageManager().getApplicationInfo(pkg, 0);
-        if (info.uid < 10000 || (info.flags & ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                pkg.equals("me.weishu.kernelsu")) throw new IllegalArgumentException("Choose an ordinary installed user app");
+        if (!allowedApplication(info, pkg)) {
+            throw new IllegalArgumentException("Core system processes, SystemUI and KernelSU cannot be pinned");
+        }
         Intent intent = context.getPackageManager().getLaunchIntentForPackage(pkg);
         if (intent == null || intent.getComponent() == null) throw new IllegalArgumentException("No launcher activity");
         PackageManager packages = context.getPackageManager();

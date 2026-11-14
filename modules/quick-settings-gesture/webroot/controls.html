@@ -1,0 +1,13 @@
+    <section aria-labelledby="quick-settings-heading">
+      <h2 id="quick-settings-heading">Quick Settings pinch · experimental</h2>
+      <p>Toggle the native Quick Settings panel with your left thumb and index finger. Release fully before repeating.</p>
+      <form id="quick-settings-gesture">
+        <fieldset id="quick-settings-options" disabled><legend>Left-hand shortcut</legend>
+          <label><span><strong>Pinch for Quick Settings</strong><small>Works independently of wrist rotation. A normal pinch can still reach the app underneath.</small></span><input type="checkbox" id="quick-settings-enabled"></label>
+          <label for="quick-settings-hold">Trigger</label>
+          <select id="quick-settings-hold"><option value="500">Hold for half a second</option><option value="0">Immediately on pinch</option></select>
+        </fieldset>
+        <button id="quick-settings-save" type="submit" disabled>Apply pinch shortcut</button>
+      </form>
+      <p class="hint">Off by default. Native Quick Settings may dim or temporarily take input from the immersive app while open. The shortcut does not launch Home.</p>
+    </section>

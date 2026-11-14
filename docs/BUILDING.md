@@ -80,6 +80,8 @@ export GXR_ANDROID_JAR="$GXR_SDK/platforms/android-37.0/android.jar"
 | Builder | Requirements and instructions |
 | --- | --- |
 | `build-window-curvature-azj2.py` | Frida, Node.js, JDK, ECJ and D8; [Window Controls](CURVATURE.md#build) |
+| `build-audio-mixer-azj2.py` | Same Window Controls toolchain; builds native per-app volume controls in its shared runtime; [Audio Mixer](../modules/audio-mixer/README.md#build-on-linux-or-fedora) |
+| `build-quick-controls-azj2.py` | Same Window Controls toolchain; builds Audio Mixer and the left-pinch native Quick Settings shortcut; [Quick Settings pinch](../modules/quick-settings-gesture/README.md#package-and-build) |
 | `build-borderless.py` | Frida; [legacy Borderless](BORDERLESS.md) |
 | `build-bread-azj2.py` | JDK, javac and D8; [mic, passthrough and low-light ports](BREAD-AZJ2.md) |
 | `build-wear-dim.py` | JDK, javac and D8; [display blanking](../modules/wear-dim/README.md) |

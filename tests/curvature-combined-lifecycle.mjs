@@ -57,6 +57,9 @@ function session({homePinsUnavailable = false} = {}) {
     };
     const context = {
         parseFeatureCommand, applyFeatureSettings,
+        installAudioMixer: () => ({stop() {}, isStopped: () => true, status: () => 'test'}),
+        parseQuickSettingsCommand: () => null,
+        installQuickSettingsGesture: () => ({configure() {}, stop() {}, getDiagnostics: () => ({})}),
         installGrabRotation: (_Java, _controller, allowed) => {
             grabPermission = allowed;
             return {setEnabled() {}, pulse: value => grabPulses.push(value), stop() {}};

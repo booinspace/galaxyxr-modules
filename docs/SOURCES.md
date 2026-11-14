@@ -1,5 +1,22 @@
 # Sources, credits and licensing
 
+## Quick Settings pinch
+
+[booinspace](https://github.com/booinspace) wrote the left-pinch recognizer,
+native UI-thread dispatch helper and settings integration. It invokes AZJ2's
+existing taskbar Quick Settings action and reuses Window Controls' hand input
+reader. Source under `modules/quick-settings-gesture/` is MIT licensed. No vendor
+implementation is distributed. See the [shortcut guide](../modules/quick-settings-gesture/README.md).
+
+## App audio mixer
+
+[booinspace](https://github.com/booinspace) wrote the native volume-panel extension,
+per-player attenuation ownership and host tests. New source under
+`modules/audio-mixer/` is MIT licensed. It uses Android's playback callback and
+`VolumeShaper` APIs; no Samsung or Google implementation source is copied or
+packaged. It shares Window Controls' injector and dependency notices below.
+See the [mixer guide](../modules/audio-mixer/README.md) for player limitations.
+
 ## OpenXR QUALITY
 
 [4uva4ek](https://github.com/4uva4ek) authored the

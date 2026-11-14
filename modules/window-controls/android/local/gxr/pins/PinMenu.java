@@ -40,7 +40,7 @@ public final class PinMenu implements AutoCloseable, View.OnClickListener {
         ApplicationInfo app;
         try { app = root.getContext().getPackageManager().getApplicationInfo(pkg, 0); }
         catch (PackageManager.NameNotFoundException | SecurityException unavailable) { return null; }
-        if (app.uid < 10000 || (app.flags & ApplicationInfo.FLAG_SYSTEM) != 0 || pkg.equals("me.weishu.kernelsu")) return null;
+        if (!PinCli.allowedApplication(app, pkg)) return null;
         boolean pinned = mode == 4 && info.baseIntent != null && info.baseIntent.hasCategory(PinCli.MARKER);
         if (mode != 1 && !pinned) return null;
         return new PinMenu(root, info.taskId, pkg, pinned);

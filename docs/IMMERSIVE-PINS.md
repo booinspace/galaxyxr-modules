@@ -290,9 +290,18 @@ Extended idle/wake and other immersive apps have not been retested.
    current candidate's intent and still need device confirmation. Tracking loss
    restores full pin opacity so it can be closed.
 
-Pinning additional user apps uses their installed package names. The runtime
-rejects system apps and immersive XR launchers, and limits itself to eight marked
-panels. Minimise should hide the window without
+Pinning additional apps uses their installed package names. Version 0.1.68 also
+allows preinstalled apps, including YouTube XR's Home Space panel, through the
+same menu and launcher checks as user-installed apps. Apps must have a normal
+launcher and pass the existing XR launch-mode checks. Core system UIDs below
+10000, SystemUI and KernelSU remain excluded. This does not force immersive XR
+activities into overlay mode. YouTube's singleTask launcher still uses **Reopen
+and pin** so Android does not reuse its ordinary window; save any work first.
+The headset owner confirmed the 0.1.68 preinstalled-app pinning update working
+after the on-device YouTube eligibility check passed. Other preinstalled apps
+and transitions into their own immersive modes need individual testing.
+
+The runtime limits itself to eight marked panels. Minimise should hide the window without
 force-stopping its app. **Close all pinned windows** removes only tasks launched
 with this feature's marker. Audio playback and audio-focus behaviour remain the
 music app's responsibility and need testing alongside Steam Link.

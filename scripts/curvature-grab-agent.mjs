@@ -33,13 +33,67 @@ export function readHandActionEvent(event, sampledAt) {
     const norm = q.reduce((sum, value) => sum + value * value, 0);
     if (!q.every(Number.isFinite) || norm < .8 || norm > 1.2) return inactive('invalid-grip');
     let strength = 0;
-    if (pinch !== null && pinch.add(0x28).readU8() === 1) {
+    const pinchActive = pinch !== null && pinch.add(0x28).readU8() === 1;
+    if (pinchActive) {
         strength = pinch.add(0x2c).readFloat();
         if (!Number.isFinite(strength) || strength < 0 || strength > 1) return inactive('invalid-pinch');
     }
     return {hand, reason: 'accepted', sample: {
-        q: q.map(value => value / Math.sqrt(norm)), pinching: strength >= .8, sampledAt,
+        q: q.map(value => value / Math.sqrt(norm)), pinching: strength >= .8,
+        pinchActive, pinchStrength: strength, sampledAt,
     }};
+}
+
+const handReaders = new Set();
+let handHooks = [];
+
+export function observeHandActions(onSample, onError, nowMs) {
+    const reader = {onSample, onError, nowMs};
+    function stop() {
+        handReaders.delete(reader);
+        if (handReaders.size === 0) {
+            for (const hook of handHooks) hook.detach();
+            handHooks = [];
+        }
+    }
+    if (handReaders.size !== 0) {
+        handReaders.add(reader);
+        return {stop};
+    }
+    const lib = Process.getModuleByName('libspaceflinger_jni_vulkan.so');
+    const sources = [
+        ['legacyCalls', '_ZN12spaceflinger10HandDevice11updateStateERKN3imp16InputActionEventE',
+            0x4dc9bf0, 0x6db63bef],
+        ['axrifCalls', '_ZNK12spaceflinger17AxrifInputManager24populateHandsSourceStateERKN3imp16InputActionEventER22Axrif_HandsSourceState',
+            0x4d89180, 0xa9bb7bfd],
+    ].map(([name, symbol, offset, next]) => {
+        const address = lib.getExportByName(symbol);
+        if (!address.equals(lib.base.add(offset)) || address.readU32() !== 0xd503233f ||
+            address.add(4).readU32() !== next) throw new Error('AZJ2 hand input symbol/code mismatch');
+        return {name, address};
+    });
+    handReaders.add(reader);
+    try {
+        for (const source of sources) {
+            handHooks.push(Interceptor.attach(source.address, {
+                onEnter(args) {
+                    for (const current of [...handReaders]) {
+                        if (!handReaders.has(current)) continue;
+                        try { current.onSample(readHandActionEvent(args[1], current.nowMs()), source.name); }
+                        catch (error) {
+                            handReaders.delete(current);
+                            if (handReaders.size === 0) {
+                                for (const hook of handHooks) hook.detach();
+                                handHooks = [];
+                            }
+                            current.onError(error);
+                        }
+                    }
+                },
+            }));
+        }
+    } catch (error) { stop(); throw error; }
+    return {stop};
 }
 
 export function chooseGrabHand(hands, now) {
@@ -51,7 +105,7 @@ export function chooseGrabHand(hands, now) {
 
 export function installGrabRotation(Java, controller, permitted, nowMs) {
     let enabled = false, callback = null;
-    const inputHooks = [];
+    let input = null;
     let hands = [null, null], state = 'off', counters = null, lastDiagnostic = 0;
     const gestures = new Map();
     function log(value) {
@@ -67,8 +121,8 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
     }
     function stop() {
         enabled = false;
-        for (const hook of inputHooks) hook.detach();
-        inputHooks.length = 0;
+        if (input !== null) input.stop();
+        input = null;
         const previousCallback = callback;
         callback = null;
         Java.perform(() => {
@@ -88,43 +142,24 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
             if (value === enabled) return;
             if (!value) { stop(); log('off'); return; }
             try {
-                const lib = Process.getModuleByName('libspaceflinger_jni_vulkan.so');
-                const sources = [
-                    ['legacyCalls', '_ZN12spaceflinger10HandDevice11updateStateERKN3imp16InputActionEventE',
-                        0x4dc9bf0, 0x6db63bef],
-                    ['axrifCalls', '_ZNK12spaceflinger17AxrifInputManager24populateHandsSourceStateERKN3imp16InputActionEventER22Axrif_HandsSourceState',
-                        0x4d89180, 0xa9bb7bfd],
-                ].map(([name, symbol, offset, next]) => {
-                    const address = lib.getExportByName(symbol);
-                    if (!address.equals(lib.base.add(offset)) || address.readU32() !== 0xd503233f ||
-                        address.add(4).readU32() !== next) throw new Error('AZJ2 hand input symbol/code mismatch');
-                    return {name, address};
-                });
                 enabled = true;
                 counters = {source: 'stock-hand-input', legacyCalls: 0, axrifCalls: 0,
                     handCalls: 0, acceptedSamples: 0, moveStarts: 0, selectedGrabs: 0,
                     deliveredGrabs: 0, lastSample: 'none'};
                 lastDiagnostic = nowMs();
                 controller.setGrabEnabled(true);
-                for (const source of sources) {
-                    inputHooks.push(Interceptor.attach(source.address, {
-                        onEnter(args) {
-                            if (!enabled) return;
-                            try {
-                                counters[source.name]++;
-                                const data = readHandActionEvent(args[1], nowMs());
-                                if (data === null) return;
-                                counters.handCalls++;
-                                counters.lastSample = data.reason;
-                                hands[data.hand] = data.sample;
-                                if (data.sample !== null) counters.acceptedSamples++;
-                                else for (const gesture of gestures.values()) {
-                                    if (gesture.hand === data.hand) gesture.invalid = true;
-                                }
-                            } catch (error) { unavailable(error); }
-                        },
-                    }));
-                }
+                input = observeHandActions((data, source) => {
+                    if (!enabled) return;
+                    counters[source]++;
+                    if (data === null) return;
+                    counters.handCalls++;
+                    counters.lastSample = data.reason;
+                    hands[data.hand] = data.sample;
+                    if (data.sample !== null) counters.acceptedSamples++;
+                    else for (const gesture of gestures.values()) {
+                        if (gesture.hand === data.hand) gesture.invalid = true;
+                    }
+                }, unavailable, nowMs);
                 const type = Java.use('com.android.systemui.xr.spatial.SpaceFlingerTransformNode$reformEventCallback$1');
                 callback = type.onEvent.overload('android.graphics.CPM$ReformEvent');
                 const original = callback;
