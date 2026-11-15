@@ -104,6 +104,18 @@ signing credentials. For unattended callers, set `XR_STEAMLINK_NO_PAUSE=1`
 before invoking the batch file. No credentials are needed for the anonymous
 Steam download.
 
+## Optional PC tools
+
+The [Steam Link PC settings helper](pc-settings/README.md) is a separate manual
+Windows utility for host profiles, including the owner's 600/1000 Mbps presets.
+Read its compatibility and recovery notes before applying it. Building an APK
+does not change SteamVR settings.
+
+The [VRCFaceTracking receiver installer](../face-tracking/README.md) separately
+creates the Desktop's `Use-SteamLink.cmd` and `Use-RootRelay.cmd` launchers.
+Their generator and provider selector are already tracked under
+`companions/face-tracking`; neither is run by the APK builder.
+
 ## Validation
 
 On 12 November 2026, the actual Windows batch launcher completed an end-to-end
