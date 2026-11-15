@@ -1,7 +1,7 @@
 {
-  "version": "0.1.63-azj2-no-age-test",
-  "versionCode": 164,
-  "zipUrl": "https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.14/gxr-window-curvature-0.1.63-azj2-no-age-test-disabled.zip",
-  "sha256": "1469c031cb32210bbf6dddbf37208dfa5fb4ce55f7c3f0d48f41537f8f49146a",
+  "version": "0.1.70-azj2-workspaces-host",
+  "versionCode": 171,
+  "zipUrl": "https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.15/gxr-window-curvature-0.1.70-azj2-workspaces-host-disabled.zip",
+  "sha256": "20a63fbe20164e52c773bd4402e93af6f02c4864b33af2f705c1c606f6f6a741",
   "changelog": "https://raw.githubusercontent.com/booinspace/galaxyxr-modules/main/README.md"
 }

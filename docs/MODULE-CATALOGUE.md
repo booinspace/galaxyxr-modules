@@ -19,10 +19,10 @@ The catalogue lives in this repository, not inside a module ZIP or APK:
   release ZIP URL, SHA-256 and documentation URL.
 - The ZIPs remain in **GitHub Releases**. No binaries belong in the source tree.
 
-The current releases are prereleases. An explicit catalogue lets the manager
-offer them with its **Experimental** label; its release-only fallback otherwise
-skips prereleases. Windows companions, the Steam Link builder, retired standalone
-Rotation and unpublished builds are not listed.
+The catalogue offers all twelve headset modules from the current normal release.
+Individual guides still identify experimental features and validation limits.
+Windows companions, the Steam Link builder, retired standalone Rotation and
+unpublished builds are not listed.
 
 ## Update the catalogue
 
@@ -31,8 +31,7 @@ the published tags you want to offer:
 
 ```sh
 python3 scripts/update-module-catalogue.py \
-  --release azj2-modules-2026.11.14 \
-  --release wifi-adb-v1.0.2-azj2
+  --release azj2-modules-2026.11.15
 python3 -B tests/module-catalogue.test.py
 git diff -- modules.json updates/
 ```
