@@ -9,9 +9,11 @@ It requires **Window Controls 0.1.70 or later** for its native SystemUI adapter.
 There is one SystemUI injector, owned by Window Controls. Disabling Saved
 Workspaces removes its Recents strip and tracking without stopping Window Controls.
 
-Download the [Saved Workspaces ZIP](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/gxr-saved-workspaces-azj2-0.1.5-disabled.zip)
-and its [Window Controls host](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/gxr-window-curvature-0.1.70-azj2-workspaces-host-disabled.zip)
-from GitHub Releases. Check both files against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/SHA256SUMS).
+Download [Saved Workspaces 0.1.6](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.15/gxr-saved-workspaces-azj2-0.1.6-disabled.zip)
+and the [Window Controls 0.1.70 host](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.15/gxr-window-curvature-0.1.70-azj2-workspaces-host-disabled.zip)
+from the [module release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.15). Verify both against
+[SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.15/SHA256SUMS).
+The head-roll update needs no change to an already working Window Controls 0.1.70 host.
 
 ## Install and first test
 
@@ -20,7 +22,7 @@ from GitHub Releases. Check both files against [SHA256SUMS](https://github.com/b
    Use the existing Window Controls update/recovery procedure; leave DirtyFrag
    Autorun off. Do not reset a crash quarantine in the same full boot.
 2. Enable Window Controls and verify its ordinary window controls first.
-3. Install `gxr-saved-workspaces-azj2-0.1.5-disabled.zip`. It installs disabled.
+3. Install `gxr-saved-workspaces-azj2-0.1.6-disabled.zip`. It installs disabled.
    Enable it and tap Action to start its root worker. No extra restart is needed.
 4. Close and reopen Recent apps using the normal right-pinch gesture. Confirm
    the one-time setup message before switching layouts. Desk initially adopts
@@ -40,15 +42,19 @@ extra workspace cards available by scrolling sideways.
 ## Follow me
 
 Open a workspace, then turn **Follow me** on in the workspace strip. Its ordinary
-and pinned windows follow your room position and facing direction using AZJ2's
-native facing reference and the stock window-placement API. Small head movements
-are ignored; position following starts after about 12 cm and turning starts after
-40 degrees. Movement eases in from rest, with slower turns capped at 60 degrees
-per second. Head pitch and roll do not tilt the whole layout.
+and pinned windows follow your room position, facing direction and head roll.
+Tilting your head towards either shoulder rolls the whole layout, so it can stay
+upright in your view while you lie on your side. It uses AZJ2's native facing
+reference, Android's gravity sensor and the stock window-placement API.
+Small head movements are ignored: position following starts after about 12 cm,
+turning after 40 degrees and roll after eight degrees. Movement eases in from
+rest, with heading changes capped at 60 degrees per second and roll at 90 degrees
+per second. Head pitch does not tilt the whole layout.
 Each window keeps its size, curvature and custom rotation. An immersive app's
 own world is not moved.
 
-Turn Follow me off to leave the windows at their current room positions. The
+Turn Follow me off to leave the windows at their current room positions **and
+angles**, including head roll. This also stops the gravity listener. The
 preference survives restarts, but following resumes only after you open a
 workspace; startup does not close or reopen apps. Following pauses while a
 workspace is opening. Saved positions use the moving workspace reference,
@@ -56,7 +62,11 @@ so walking across the room is not saved as a change to the layout.
 
 Follow me is off by default. The 0.1.5 headset test on AZJ2 confirmed smoother
 ordinary-window movement, the wider eased turns, dragging and switching following
-off. Immersive pins and extended idle/wake still need testing.
+off. The 0.1.6 headset test confirmed left and right head roll and keeping the
+tilted layout in place after Follow me is turned off. When the sensor is stale
+or you look almost straight up or down, the module holds its last
+roll angle while position and heading following continue. Immersive pins and
+extended idle/wake still need testing.
 
 ## Switching behavior
 
@@ -131,7 +141,9 @@ command plus `--workspaces-host`. Both builders retain firmware checks and produ
 disabled ZIPs with checksum sidecars. No Samsung or Google source/APK is bundled.
 
 Portable tests exercise layout math, persistence/corruption handling, preflight,
-shared apps, media selection, slow startup, interrupted switches and manual retry. Transport tests
+shared apps, media selection, slow startup, interrupted switches, manual retry,
+gravity axes, eased side-lying roll, angle wrap, invalid sensor readings and rigid
+window geometry. Transport tests
 check size limits, session matching, expiry and isolation from the parent runtime.
 Android compilation checks API use. A disposable invisible-node probe on AZJ2
 confirmed facing-relative transform capture and explicit-matrix round-tripping;

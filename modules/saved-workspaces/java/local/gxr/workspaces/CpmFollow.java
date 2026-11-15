@@ -1,5 +1,6 @@
 package local.gxr.workspaces;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.SystemClock;
 import java.io.Closeable;
@@ -13,6 +14,7 @@ import java.util.Set;
 final class CpmFollow implements Closeable {
     private final CpmLayouts layouts;
     private final CpmFacing facing;
+    private final CpmHeadRoll headRoll;
     private final WorkspaceFollowMotion motion;
     private final Map<Integer,WorkspaceFollowMotion.WindowPose> windows=new HashMap<>();
     private final Map<Integer,CpmLayouts.Reference> references=new HashMap<>();
@@ -20,10 +22,16 @@ final class CpmFollow implements Closeable {
     private long holdUntil,statsAt,ticks,batches,blocked;
     private double slowest;
     private boolean closed,tracking=true;
-    CpmFollow(CpmLayouts layouts,Handler owner,float[] placement)throws Exception{
+    CpmFollow(Context context,CpmLayouts layouts,Handler owner,float[] placement)throws Exception{
         this.layouts=layouts;facing=new CpmFacing(layouts,owner);
-        try{raw=facing.sample(2500);motion=new WorkspaceFollowMotion(raw,placement,SystemClock.uptimeMillis());}
-        catch(Exception error){try{facing.close();}catch(Exception cleanup){error.addSuppressed(cleanup);}throw error;}
+        CpmHeadRoll started=null;
+        try{
+            started=new CpmHeadRoll(context,owner);
+            raw=facing.sample(2500);motion=new WorkspaceFollowMotion(raw,placement,SystemClock.uptimeMillis());headRoll=started;
+        }catch(Exception error){
+            if(started!=null)started.close();
+            try{facing.close();}catch(Exception cleanup){error.addSuppressed(cleanup);}throw error;
+        }
     }
     void update(Set<Integer> ids)throws Exception{
         long began=System.nanoTime();
@@ -65,7 +73,7 @@ final class CpmFollow implements Closeable {
         }
         if(full){blocked++;return;}
         if(now<holdUntil){motion.rebase(raw,anchor,now);return;}
-        float[] next=motion.update(raw,now);
+        float[] next=motion.update(raw,headRoll.value(),now);
         Map<Integer,float[]> moves=new HashMap<>();
         for(int id:ready){float[] world=windows.get(id).at(next);if(WorkspaceFollowMotion.placementChanged(world,references.get(id).matrix))moves.put(id,world);}
         if(!moves.isEmpty()){
@@ -97,7 +105,9 @@ final class CpmFollow implements Closeable {
     }
     float[] placement(){return motion.placement();}
     @Override public void close()throws IOException{
-        if(closed)return;facing.close();closed=true;windows.clear();references.clear();
+        if(closed)return;
+        try{facing.close();}finally{headRoll.close();}
+        closed=true;windows.clear();references.clear();
         android.util.Log.i("GxrWorkspaces","FOLLOW_FROZEN");
     }
 }

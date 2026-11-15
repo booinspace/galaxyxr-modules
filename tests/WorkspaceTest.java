@@ -119,8 +119,68 @@ public final class WorkspaceTest {
         pipelineMotion.pause(1000);near(pipelineMotion.update(start,1000),layout);
         float[] invalid=target.clone();invalid[0]=Float.NaN;fails(()->WorkspaceFollowMotion.head(invalid));
     }
+    static float roll(float[] pose){return (float)Math.atan2(pose[1],pose[5]);}
+    static float angularDistance(float a,float b){return (float)Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));}
+    static void headRollMotion() throws Exception {
+        check(Math.abs(WorkspaceFollowMotion.gravityRoll(0,9.8f,0))<.001,"Upright gravity was not level");
+        float right=WorkspaceFollowMotion.gravityRoll(-9.155f,2.901f,1.985f);
+        check(right<-1.2f&&right>-1.3f,"Measured AZJ2 right tilt had the wrong sign");
+        check(Math.abs(WorkspaceFollowMotion.gravityRoll(9.8f,0,0)-Math.PI/2)<.001,"Left side-lying roll was not 90 degrees");
+        check(Math.abs(WorkspaceFollowMotion.gravityRoll(-9.8f,0,0)+Math.PI/2)<.001,"Right side-lying roll was not -90 degrees");
+        check(Math.abs(WorkspaceFollowMotion.gravityRoll(0,7,7))<.001,"Head pitch became roll");
+        check(Float.isNaN(WorkspaceFollowMotion.gravityRoll(0,0,9.8f)),"Vertical gaze produced an arbitrary roll");
+        check(Float.isNaN(WorkspaceFollowMotion.gravityRoll(0,.5f,9.8f)),"Nearly vertical gaze did not hold the previous roll");
+        check(Float.isNaN(WorkspaceFollowMotion.gravityRoll(Float.NaN,9.8f,0)),"NaN gravity was accepted");
+        check(Float.isNaN(WorkspaceFollowMotion.gravityRoll(Float.POSITIVE_INFINITY,9.8f,0)),"Infinite gravity was accepted");
+        check(Float.isNaN(WorkspaceFollowMotion.gravityRoll(0,0,0))&&Float.isNaN(WorkspaceFollowMotion.gravityRoll(0,20,0)),"Invalid gravity magnitude was accepted");
+        float[] start=facing(0,0,0,0),layout=WorkspaceMath.identity();layout[14]=-2;
+        WorkspaceFollowMotion motion=new WorkspaceFollowMotion(start,layout,0);
+        for(int i=1;i<=30;i++)near(motion.update(start,(float)Math.toRadians(5),i*11),layout);
+        float previous=0;
+        for(int i=31;i<=400;i++){
+            float[] value=motion.update(start,(float)-Math.PI/2,i*11);
+            float next=roll(value);
+            check(angularDistance(previous,next)<=Math.toRadians(90)*.011+.00001,"Roll exceeded its speed cap");
+            if(i==31)check(Math.abs(next)<Math.toRadians(.3),"Roll jumped instead of easing from rest");
+            previous=next;
+        }
+        check(angularDistance(previous,(float)-Math.PI/2)<Math.toRadians(.6),"Roll did not reach a side-lying pose");
+        float[] tilted=motion.placement();
+        float[] local=WorkspaceMath.identity();local[12]=.6f;local[13]=.4f;local[0]=.8f;local[2]=-.6f;local[8]=.6f;local[10]=.8f;
+        float[] window=WorkspaceMath.restore(layout,local);
+        WorkspaceFollowMotion.WindowPose pose=new WorkspaceFollowMotion.WindowPose(window,layout);
+        float[] rotated=pose.at(tilted);
+        check(Math.abs(rotated[12]-.4f)<.01&&Math.abs(rotated[13]+.6f)<.01,"Workspace windows did not roll together around the head");
+        near(WorkspaceMath.relative(tilted,rotated),local);
+        for(int i=401;i<=450;i++)near(motion.update(start,Float.NaN,i*11),tilted);
+        near(motion.update(start,450*11),tilted);
+        float[] copy=motion.placement();copy[0]=99;near(motion.placement(),tilted);
+        WorkspaceFollowMotion resumed=new WorkspaceFollowMotion(start,tilted,0);
+        for(int i=1;i<=100;i++)near(resumed.update(start,(float)-Math.PI/2,i*11),tilted);
+        resumed.rebase(start,tilted,2000);near(resumed.update(start,(float)-Math.PI/2,2011),tilted);
+        for(int i=451;i<=850;i++)motion.update(facing(1,0,0,0),Float.NaN,i*11);
+        check(Math.abs(motion.placement()[12]-1)<.01,"Missing roll readings stopped positional following");
+        check(angularDistance(roll(motion.placement()),roll(tilted))<.001,"Missing roll readings levelled the workspace");
+        WorkspaceFollowMotion combined=new WorkspaceFollowMotion(start,layout,0);
+        float[] target=facing(1,.7f,-.5f,Math.toRadians(60));
+        for(int i=1;i<=600;i++)combined.update(target,(float)Math.PI/2,i*11);
+        float[] expected=WorkspaceMath.identity();expected[0]=0;expected[1]=1;expected[4]=-1;expected[5]=0;
+        expected=WorkspaceMath.multiply(WorkspaceMath.multiply(WorkspaceFollowMotion.head(target),expected),layout);
+        for(int i=0;i<16;i++)check(Math.abs(combined.placement()[i]-expected[i])<.025,"Combined heading and roll changed layout geometry at "+i);
+        float[] around=layout.clone();float c=(float)Math.cos(Math.toRadians(179)),s=(float)Math.sin(Math.toRadians(179));
+        around[0]=c;around[1]=s;around[4]=-s;around[5]=c;
+        WorkspaceFollowMotion wrap=new WorkspaceFollowMotion(start,around,0);
+        near(wrap.update(start,(float)Math.toRadians(-179),11),around);
+        previous=roll(around);
+        for(int i=2;i<=400;i++){
+            float next=roll(wrap.update(start,(float)Math.toRadians(-150),i*11));
+            check(angularDistance(previous,next)<=Math.toRadians(90)*.011+.00001,"Roll took the long way around its wrap");previous=next;
+        }
+        check(angularDistance(previous,(float)Math.toRadians(-150))<Math.toRadians(.6),"Roll did not converge across 180 degrees");
+    }
     public static void main(String[] ignored)throws Exception{
         followMotion();
+        headRollMotion();
         float[] previous=WorkspaceMath.identity();previous[12]=3;previous[14]=-2;
         float[] next=WorkspaceMath.identity();next[0]=0;next[2]=-1;next[8]=1;next[10]=0;next[12]=8;
         float[] world=WorkspaceMath.identity();world[12]=4;world[13]=1;world[14]=-4;
@@ -215,6 +275,6 @@ public final class WorkspaceTest {
         check(unsafe.events.isEmpty(),"Unconfirmed switch changed apps");
         fails(()->new Workspace(desk.id,"bad\nname",0,Collections.emptyList()));
         fails(()->new Workspace(desk.id,"Duplicate",0,Arrays.asList(old,old)));
-        System.out.println("PASS: view-relative transforms, plans, shared media, bounded storage, checksum, preflight, slow startup, no automatic rollback, cancellation, retry, journal, follow easing, wider turns, turn-rate cap, yaw wrap, bounded late/coalesced acknowledgements, drag preservation and moving-anchor persistence");
+        System.out.println("PASS: view-relative transforms, plans, shared media, bounded storage, checksum, preflight, slow startup, no automatic rollback, cancellation, retry, journal, follow easing, wider turns, turn-rate cap, yaw wrap, gravity roll, side-lying layouts, roll easing/wrap/hold, rigid window geometry, bounded late/coalesced acknowledgements, drag preservation and moving-anchor persistence");
     }
 }

@@ -3,12 +3,27 @@ package local.gxr.workspaces;
 /** One smoothed room-relative transform for the whole layout, independent of window content rotation. */
 public final class WorkspaceFollowMotion {
     private float[] originHead,originLayout,currentHead,currentLayout;
-    private final float[] velocity=new float[4];
+    private final float[] velocity=new float[5];
+    private float currentRoll;
     private long lastTime;
-    private boolean translating,turning;
+    private boolean translating,turning,rolling;
     public WorkspaceFollowMotion(float[] facing,float[] layout,long now){rebase(facing,layout,now);}
     private static float yaw(float[] pose){return (float)Math.atan2(pose[8],pose[10]);}
     private static float angle(float value){return (float)Math.atan2(Math.sin(value),Math.cos(value));}
+    /** Gravity axes were checked on AZJ2: upright is +Y, and right-ear-down is negative X. */
+    public static float gravityRoll(float x,float y,float z){
+        float squared=x*x+y*y+z*z;
+        if(!Float.isFinite(squared)||squared<49||squared>169)return Float.NaN;
+        // shortcut: Gravity roll is ambiguous near vertical gaze; use full head pose if those poses need continuous roll.
+        if(x*x+y*y<.04f*squared)return Float.NaN;
+        return (float)Math.atan2(x,y);
+    }
+    private static void rotation(float[] pose,float heading,float roll){
+        float c=(float)Math.cos(heading),s=(float)Math.sin(heading),cr=(float)Math.cos(roll),sr=(float)Math.sin(roll);
+        pose[0]=c*cr;pose[1]=sr;pose[2]=-s*cr;
+        pose[4]=-c*sr;pose[5]=cr;pose[6]=s*sr;
+        pose[8]=s;pose[9]=0;pose[10]=c;
+    }
     /** Removes scale and the two-metre forward offset requested from CPM. */
     public static float[] head(float[] facing){
         float[] value=WorkspaceMath.checked(facing),out=WorkspaceMath.identity();
@@ -19,8 +34,10 @@ public final class WorkspaceFollowMotion {
         return WorkspaceMath.checked(out);
     }
     public void rebase(float[] facing,float[] layout,long now){
-        originHead=head(facing);currentHead=originHead.clone();originLayout=WorkspaceMath.checked(layout);
-        currentLayout=originLayout.clone();pause(now);translating=false;turning=false;
+        originHead=head(facing);originLayout=WorkspaceMath.checked(layout);
+        currentRoll=(float)Math.atan2(originLayout[1],originLayout[5]);
+        rotation(originHead,yaw(originHead),currentRoll);currentHead=originHead.clone();
+        currentLayout=originLayout.clone();pause(now);translating=false;turning=false;rolling=false;
     }
     public void pause(long now){java.util.Arrays.fill(velocity,0);lastTime=now;}
     private float damp(float current,float target,int axis,float rate,float seconds){
@@ -30,6 +47,9 @@ public final class WorkspaceFollowMotion {
         return target+(difference+step)*decay;
     }
     public float[] update(float[] facing,long now){
+        return update(facing,Float.NaN,now);
+    }
+    public float[] update(float[] facing,float roll,long now){
         float[] target=head(facing);
         if(now<lastTime)throw new IllegalArgumentException("Follow clock moved backwards");
         float seconds=Math.min(50,now-lastTime)/1000f;lastTime=now;
@@ -46,9 +66,20 @@ public final class WorkspaceFollowMotion {
             float heading=damp(currentYaw,currentYaw+delta,3,5f,seconds);
             float maximum=(float)Math.toRadians(60)*seconds;
             if(Math.abs(heading-currentYaw)>maximum){heading=currentYaw+Math.copySign(maximum,heading-currentYaw);velocity[3]=Math.copySign((float)Math.toRadians(60),heading-currentYaw);}
-            float c=(float)Math.cos(heading),s=(float)Math.sin(heading);
-            currentHead[0]=c;currentHead[2]=-s;currentHead[8]=s;currentHead[10]=c;
+            currentYaw=heading;
         }
+        if(Float.isFinite(roll)){
+            float difference=angle(roll-currentRoll);
+            if(Math.abs(difference)>Math.toRadians(8))rolling=true;
+            else if(Math.abs(difference)<Math.toRadians(.5)&&Math.abs(velocity[4])<Math.toRadians(1)){rolling=false;velocity[4]=0;}
+            if(rolling){
+                float next=damp(currentRoll,currentRoll+difference,4,7f,seconds);
+                float maximum=(float)Math.toRadians(90)*seconds;
+                if(Math.abs(next-currentRoll)>maximum){next=currentRoll+Math.copySign(maximum,next-currentRoll);velocity[4]=Math.copySign((float)Math.toRadians(90),next-currentRoll);}
+                currentRoll=angle(next);
+            }
+        }else{rolling=false;velocity[4]=0;}
+        rotation(currentHead,currentYaw,currentRoll);
         currentLayout=WorkspaceMath.multiply(WorkspaceMath.multiply(currentHead,WorkspaceMath.inverse(originHead)),originLayout);
         return currentLayout.clone();
     }

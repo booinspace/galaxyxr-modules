@@ -57,7 +57,7 @@ def main():
         }, indent=2, sort_keys=True) + '\n').encode()
         for path in module.glob('*.sh'):
             subprocess.run(['sh', '-n', str(path)], check=True)
-        package(args.output / 'gxr-saved-workspaces-azj2-0.1.5-disabled.zip', payload)
+        package(args.output / 'gxr-saved-workspaces-azj2-0.1.6-disabled.zip', payload)
 
 
 if __name__ == '__main__':

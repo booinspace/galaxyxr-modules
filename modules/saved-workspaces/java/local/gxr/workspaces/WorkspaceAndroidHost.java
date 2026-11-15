@@ -207,7 +207,7 @@ final class WorkspaceAndroidHost implements WorkspaceEngine.Host, Closeable {
             }
             followIds.clear();followIds.addAll(ids);followScannedAt=now;layouts.sweep(ids);
         }
-        if(following==null)following=new CpmFollow(layouts,owner,anchor);
+        if(following==null)following=new CpmFollow(context,layouts,owner,anchor);
         following.update(followIds);return following.placement();
     }
     float[] stopFollowing()throws Exception{
