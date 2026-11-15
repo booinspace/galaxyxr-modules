@@ -625,11 +625,6 @@ def integrate_immersive_pins(work: Path, module: Path) -> None:
             "                });\n"
             "            }\n            return;\n        }\n"
             "        const values = parseFeatureCommand(command);")
-    replace(module / "control.sh", "    printf 'pulse\\n' >&3 || { failed=1; break; }",
-            "    printf 'pulse\\n' >&3 || { failed=1; break; }\n"
-            '    if [ "$((count % 10))" -eq 0 ] && read -r pulse_uptime unused < /proc/uptime; then\n'
-            '      echo "SUPERVISOR_PULSE count=$count uptime=$pulse_uptime"\n'
-            '    fi')
     replace(agent, "            if (!stopped && borderless !== null) borderless.pulse();",
             "            if (!stopped && borderless !== null) borderless.pulse();\n"
             "            if (!stopped && immersivePins !== null) immersivePins.pulse();")
@@ -752,9 +747,6 @@ def integrate_supervisor_lease(module: Path) -> None:
     replace(checker, '        subprocess.run([str(args.java), "-cp", output, "WindowCurvatureLeaseTest"], check=True)',
             '        subprocess.run([str(args.java), "-cp", output, "WindowCurvatureLeaseTest"], check=True)\n'
             f'        subprocess.run([str(args.java), "-cp", output, "WindowSupervisorLeaseTest", "{SUPERVISOR_LEASE_MS}"], check=True)')
-    replace(module / "control.sh",
-            'if [ "$((count % 10))" -eq 0 ] && read -r pulse_uptime unused < /proc/uptime; then',
-            'if read -r pulse_uptime unused < /proc/uptime; then')
 
 
 def remove_borderless_delay(module: Path) -> None:
@@ -942,8 +934,40 @@ function poll() {""")
             "        const quick = parseQuickSettingsCommand(command);")
     replace(agent, "log('STATE', {quickSettings:",
             "log('STATE', {workspaces: workspaces === null ? null : workspaces.status(), quickSettings:")
-    replace(module / "module.prop", "version=0.1.68-azj2-quick-controls", "version=0.1.70-azj2-workspaces-host")
-    replace(module / "module.prop", "versionCode=169", "versionCode=171")
+    replace(module / "module.prop", "version=0.1.68-azj2-quick-controls", "version=0.1.71-azj2-grab-pose")
+    replace(module / "module.prop", "versionCode=169", "versionCode=172")
+
+
+def integrate_passthrough_blend(module: Path) -> None:
+    """Reuse the native dimmer row for Home/environment blending in the shared host."""
+    shutil.copyfile(ROOT / "scripts/curvature-passthrough-blend-agent.mjs",
+                    module / "agent/curvature-passthrough-blend-agent.mjs")
+    agent = module / "agent/main.js"
+    replace(agent, "import {installQuickSettingsGesture, parseQuickSettingsCommand} from './curvature-quick-settings-agent.mjs';",
+            "import {installQuickSettingsGesture, parseQuickSettingsCommand} from './curvature-quick-settings-agent.mjs';\n"
+            "import {installPassthroughBlend} from './curvature-passthrough-blend-agent.mjs';")
+    replace(agent, "let quickSettings = null;", "let quickSettings = null;\nlet passthroughBlend = null;")
+    replace(agent, "                            quickSettings = installQuickSettingsGesture(Java, factory,",
+            "                            passthroughBlend = installPassthroughBlend(Java, factory,\n"
+            "                                () => !stopped && nowMs() - lastSupervisor < SUPERVISOR_LEASE_MS, log);\n"
+            "                            quickSettings = installQuickSettingsGesture(Java, factory,")
+    replace(agent, "            if (workspaces !== null) workspaces.pulse(tasks);",
+            "            if (workspaces !== null) workspaces.pulse(tasks);\n"
+            "            if (passthroughBlend !== null) passthroughBlend.pulse();")
+    replace(agent, "    try { if (quickSettings !== null) quickSettings.stop(); }",
+            "    try { if (passthroughBlend !== null) passthroughBlend.stop(); }\n"
+            "    catch (error) { log('PASSTHROUGH_BLEND_STOP_ERROR', {error: String(error)}); }\n"
+            "    try { if (quickSettings !== null) quickSettings.stop(); }")
+    replace(agent, "(workspaces === null || workspaces.isStopped())) {",
+            "(workspaces === null || workspaces.isStopped()) &&\n"
+            "                (passthroughBlend === null || passthroughBlend.isStopped())) {")
+    replace(agent, "quickSettings: quickSettings === null ? null : quickSettings.getDiagnostics(),",
+            "quickSettings: quickSettings === null ? null : quickSettings.getDiagnostics(), "
+            "passthroughBlend: passthroughBlend === null ? null : passthroughBlend.status(),")
+    replace(module / "module.prop", "version=0.1.71-azj2-grab-pose", "version=0.1.76-azj2-log-fix")
+    replace(module / "module.prop", "versionCode=172", "versionCode=177")
+    replace(module / "module.prop", "Window controls with opt-in immersive app pins",
+            "Window controls with Home passthrough blending, opt-in immersive app pins")
 
 
 def main() -> None:
@@ -1112,6 +1136,10 @@ def main() -> None:
                                 "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
             if args.workspaces_host:
                 integrate_workspaces(module)
+                integrate_passthrough_blend(module)
+                subprocess.run([sys.executable, str(ROOT / "tests/passthrough-blend-host.test.py"),
+                                "--java", str(args.java), "--ecj", str(args.ecj)], check=True)
+                subprocess.run(["node", "--test", str(ROOT / "tests/passthrough-blend-agent.test.mjs")], check=True)
                 subprocess.run(["node", "--test", str(ROOT / "tests/workspaces-agent.test.mjs")], check=True)
             subprocess.run([sys.executable, str(ROOT / "tests/pin-supervisor.test.py"),
                             str(module / "control.sh")], check=True)
@@ -1223,7 +1251,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.70-azj2-workspaces-host" if args.workspaces_host else
+        version = ("0.1.76-azj2-log-fix" if args.workspaces_host else
                    "0.1.68-azj2-quick-controls" if args.quick_settings_gesture else
                    "0.1.64-azj2-audio-mixer" if args.audio_mixer else
                    "0.1.63-azj2-no-age-test" if args.no_startup_age else

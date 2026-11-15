@@ -222,7 +222,11 @@ events. This follows the full hand orientation, including roll. The tracking
 frame is the hand grip/palm frame; it is not a raw wrist-joint measurement.
 The caption's owning view performs the node update; stock
 translation and event delivery continue. Each grab starts from the window's
-current orientation, so enabling it does not immediately turn the window.
+current compositor orientation, including a workspace's Follow me roll. The
+starting pose is captured before stock grab handling and is kept for the whole
+grab, so moving a side-lying layout does not level the window. The fix
+passes left/right side-lying controller regressions, and the headset owner confirmed
+0.1.72 starts a grab from the current followed angle.
 The math removes the parent's changing orientation before applying the hand
 delta. Roll is taken from the full hand quaternion.
 
@@ -264,6 +268,30 @@ after the usual startup delay, and use a small wrist movement in each axis.
 Check release, dragging and app input before trying large angles. Turn grab
 rotation off and check the sliders again. Use the existing full reboot
 recovery procedure if SystemUI crashes.
+
+## Home passthrough blend
+
+The 0.1.76 candidate adds a camera/environment slider to native Quick Settings,
+inside the shared Window Controls runtime. At zero it shows the selected Home
+environment; at 100% it shows camera passthrough. Intermediate values request both
+layers with complementary opacity. This applies to Home Space only. App-owned
+passthrough, lockscreen, emergency and boundary states retain their native rules.
+The [blend guide](../modules/quick-settings-gesture/README.md#passthrough-blend)
+covers the build and the remaining hardware check. The grab-pose fix is included;
+0.1.71 remains a separate candidate for testing that fix alone.
+
+## Installer size and diagnostic history
+
+KernelSU GXR checks the entire installed module against a 64 MiB limit before
+it runs the update. Historical session logs now live outside that directory, in
+`/data/adb/gxr-window-curvature-diagnostics/`. Per-second supervisor console traces
+are removed; heartbeat delivery, lease checks and runtime diagnostics remain active.
+
+An older installed copy may already exceed that limit. Its inactive `*.pre-reset.*`
+files must be backed up and relocated before the installer can update it. Active
+failure/session markers, settings, live logs and package files must be preserved.
+Rebuilding the ZIP alone does not change the installed folder's size. The owner
+confirmed 0.1.76 installs after the historical logs were backed up and relocated.
 
 ## Compatibility and runtime
 

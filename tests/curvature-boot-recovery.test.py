@@ -21,6 +21,7 @@ class BootRecoveryTest(unittest.TestCase):
         self.module.mkdir(parents=True)
         (self.root / "localtmp").mkdir()
         (self.root / "dev").mkdir()
+        self.history = self.root / "history"
         self.state = self.root / "dev/gxr-window-curvature"
         self.launch = self.root / "dev/gxr-window-curvature-launch"
         commands = self.root / "commands"
@@ -40,6 +41,7 @@ class BootRecoveryTest(unittest.TestCase):
         for name in ("control.sh", "boot-recovery.sh", "recovery.sh", "action.sh", "restart.sh", "features.sh"):
             text = (SOURCE / name).read_text()
             for before, after in {
+                "/data/adb/gxr-window-curvature-diagnostics": str(self.root / "history"),
                 "/data/adb/modules": str(self.root / "modules"),
                 "/data/local/tmp": str(self.root / "localtmp"),
                 "/dev/gxr-": str(self.root / "dev/gxr-"),
@@ -62,6 +64,7 @@ class BootRecoveryTest(unittest.TestCase):
         self.assertTrue((self.module / "session-open").exists())
         self.assertEqual((self.module / "runtime.log").read_text(), "GXR_CURVATURE_FATAL old crash")
         self.assertFalse(list(self.module.glob("*.pre-reset.*")))
+        self.assertFalse(list(self.history.glob("*.pre-reset.*")))
 
     def test_new_boot_archives_and_exports_before_reaching_injection_gate(self):
         result = self.run_control()
@@ -69,10 +72,18 @@ class BootRecoveryTest(unittest.TestCase):
         # The fake device has no SystemUI PID: stop before any injector can run.
         self.assertIn("Expected one SystemUI process", result.stdout)
         self.assertFalse((self.module / "session-open").exists())
-        self.assertEqual(len(list(self.module.glob("*.pre-reset.*"))), 3)
+        self.assertFalse(list(self.module.glob("*.pre-reset.*")))
+        self.assertEqual(len(list(self.history.glob("*.pre-reset.*"))), 3)
         self.assertEqual((self.root / "localtmp/gxr-curvature-failure").read_text(), "old failure")
+        self.assertEqual(next(self.history.glob("failure.pre-reset.*")).read_text(), "old failure")
+        self.assertEqual(self.history.stat().st_mode & 0o777, 0o700)
         self.assertIn("firmware.sha256", (self.root / "checks").read_text())
         self.assertFalse(self.launch.exists())
+
+    def test_unavailable_history_storage_preserves_session(self):
+        self.history.write_text("blocked")
+        self.assertNotEqual(self.run_control().returncode, 0)
+        self.assert_preserved()
 
     def test_same_boot_and_bad_identities_are_not_cleared(self):
         for boot, previous, session in (
@@ -130,7 +141,8 @@ class BootRecoveryTest(unittest.TestCase):
         self.assertFalse((self.module / "session-open").exists())
         self.assertFalse(self.state.exists())
         self.assertFalse(self.launch.exists())
-        self.assertEqual(len(list(self.module.glob("*.pre-reset.*"))), 3)
+        self.assertFalse(list(self.module.glob("*.pre-reset.*")))
+        self.assertEqual(len(list(self.history.glob("*.pre-reset.*"))), 3)
 
     def test_update_stop_cannot_clear_a_crash_from_the_same_boot(self):
         (self.root / "boot").write_text(OLD_BOOT)

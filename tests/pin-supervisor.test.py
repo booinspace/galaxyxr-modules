@@ -85,6 +85,7 @@ exec 3> "$MODDIR/control.pipe"
             reader.join(timeout=2)
             self.assertFalse(reader.is_alive(), "Helper retained the supervisor pipe after stop")
             self.assertEqual(result.returncode, int(invalid or stop == "identity"), result.stdout + result.stderr)
+            self.assertNotIn("SUPERVISOR_PULSE", result.stdout)
             if stop or invalid:
                 self.assertLessEqual(len(pulses), 3)
             else:

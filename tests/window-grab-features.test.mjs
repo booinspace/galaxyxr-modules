@@ -119,9 +119,11 @@ test('native observation covers both stock consumers, preserves delivery and can
         return {detach: () => handlers.delete(address.address)};
     }};
     try {
-        const controller = {setGrabEnabled: value => calls.push(['enabled', value]),
+        const basis = [.70710677, 0, 0, -.70710677], delivered = [];
+        const controller = {parentOrientation: () => { calls.push('pose'); return basis; },
+            setGrabEnabled: value => calls.push(['enabled', value]),
             cancelGrabs: () => calls.push('cancel'),
-            onGrab: (...args) => calls.push(['grab', args[2]])};
+            onGrab: (...args) => { delivered.push(args); calls.push(['grab', args[2]]); }};
         const Java = {perform: callback => callback(), array: (_type, values) => values,
             use: () => ({onEvent: {overload: () => original}})};
         let now = 1000;
@@ -137,7 +139,11 @@ test('native observation covers both stock consumers, preserves delivery and can
                 {type: {value: 1}, id: {value: 7}, state: {value: state}, proposedOrientation: {value: q}});
         }
         assert.equal(event(1), 123);
+        assert.ok(calls.indexOf('pose') < calls.indexOf('stock'), 'sample the followed pose before stock reform dispatch');
+        basis[0] = 1; basis[3] = 0;
         now += 20; sample(1); event(2);
+        assert.deepEqual(delivered[0][5], [.70710677, 0, 0, -.70710677]);
+        assert.deepEqual(delivered[1][5], delivered[0][5], 'later stock proposals must not replace the captured starting pose');
         hand.memory.writeUInt8(0, hand.grip + 0x28); sample(1);
         hand.memory.writeUInt8(1, hand.grip + 0x28);
         now += 20; sample(1); event(2);

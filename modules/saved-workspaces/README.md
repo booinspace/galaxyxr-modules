@@ -53,6 +53,11 @@ per second. Head pitch does not tilt the whole layout.
 Each window keeps its size, curvature and custom rotation. An immersive app's
 own world is not moved.
 
+Window Controls preserves the current followed angle when a grab starts,
+including head roll. Host regressions cover both side-lying directions, and the
+owner confirmed current-angle grabs on AZJ2. Saved Workspaces does not need
+reinstalling for this fix.
+
 Turn Follow me off to leave the windows at their current room positions **and
 angles**, including head roll. This also stops the gravity listener. The
 preference survives restarts, but following resumes only after you open a

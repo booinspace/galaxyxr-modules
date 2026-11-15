@@ -212,9 +212,20 @@ public final class RotationController {
         return Arrays.copyOf(ids, count);
     }
 
+    /** Read before the stock grab callback can replace an explicit workspace placement. */
+    public float[] parentOrientation(Object transform) throws Exception {
+        List<?> replay = (List<?>) call(field(transform, "_spaceFlingerWorldFromNodeTransform"), "getReplayCache");
+        if (replay.size() != 1 || !(replay.get(0) instanceof List)) return null;
+        List<?> values = (List<?>) replay.get(0);
+        if (values.size() != 16) return null;
+        float[] matrix = new float[16];
+        for (int i = 0; i < matrix.length; i++) matrix[i] = ((Number) values.get(i)).floatValue();
+        return RotationMath.fromMatrix(matrix);
+    }
+
     /** Reform callbacks can lack a looper; post rotation on the caption's owning view. */
     public synchronized void onGrab(Object transform, int id, int state, float[] hand,
-            float[] parent, long sampledAt) throws Exception {
+            float[] parent, float[] startingParent, long sampledAt) throws Exception {
         if (!enabled || !grabEnabled || stopping) { grabStatus = "inactive"; return; }
         grabStatus = "not-bound";
         for (Window window : windows) {
@@ -257,17 +268,17 @@ public final class RotationController {
                     if (state == 1) {
                         session.grabId = id;
                         session.handStart = RotationMath.normalize(hand);
-                        session.parentStart = RotationMath.normalize(parent);
+                        session.parentStart = RotationMath.normalize(startingParent);
                         session.localStart = session.orientation.clone();
-                        grabStatus = "started";
-                    } else if (state == 2 && session.grabId == id) {
+                    }
+                    if ((state == 1 || state == 2) && session.grabId == id) {
                         if (session.currentTask() == null) { session.grabId = -1; return; }
                         session.orientation = RotationMath.grabbed(session.handStart, hand, session.parentStart,
                                 parent, session.localStart);
                         int[] angles = RotationMath.degrees(session.orientation);
                         System.arraycopy(angles, 0, session.angles, 0, 3);
                         session.update();
-                        grabStatus = "applied";
+                        grabStatus = state == 1 ? "started" : "applied";
                         for (RotationMenu menu : session.menus) menu.root.post(menu::refresh);
                     }
                 } catch (Exception failure) { fail(failure); }

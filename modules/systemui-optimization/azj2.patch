@@ -1,0 +1,320 @@
+diff --git a/modules/systemui-optimization/module/auto.sh b/modules/systemui-optimization/module/auto.sh
+--- a/modules/systemui-optimization/module/auto.sh
++++ b/modules/systemui-optimization/module/auto.sh
+@@ -1,12 +1,12 @@
+ #!/system/bin/sh
+ set -eu
+ MODDIR=${0%/*}
+-STATE=/dev/gxr_systemui_optimization
++STATE=/dev/gxr_systemui_optimization_azj2
+ BIN="$MODDIR/bin/gxr-systemui"
+ PACKAGE=com.android.systemui
+ PIN=ab04d6daf57800a42170febaf33cb128441339c06bd6d46f068c0109693fee42
+-SPACE_PIN=7c72d2bd2284223877d5d5701fb69206fd2a202fa4867650b606c9245ff36fc5
+-SYSUI_PIN=d2060072c6046354d470a5e4949f762160a7d89f20310a8652e57c67805c0863
++SPACE_PIN=8342a55dd62163af3653dcf2153a842e243377897ced3ca00703603d275a3d7f
++SYSUI_PIN=f6e34cf42f704c5d3ced9cca18dd392abf4925cde9e30c3b752a34be4102a809
+ identity() {
+     p=$(pidof "$PACKAGE" 2>/dev/null || true)
+     case "$p" in ''|*[!0-9]*) return 1;; esac
+@@ -30,7 +30,7 @@
+ }
+ [ "$(id -u)" = 0 ] || { echo 'DISABLED - Root required'; exit 1; }
+ awk '$2=="/dev" && $3=="tmpfs" {ok=1} END {exit !ok}' /proc/mounts || exit 1
+-for path in "$STATE" "$STATE/worker" "$STATE/target" "$MODDIR/autostart"; do
++for path in "$STATE" "$STATE/worker" "$STATE/target" "$STATE/coordinated-restart" "$MODDIR/autostart"; do
+     [ ! -L "$path" ] || { echo 'DISABLED - Unsafe state path'; exit 1; }
+ done
+ umask 077
+@@ -70,13 +70,16 @@
+     restore
+     ;;
+ resume)
+-    [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || exit 0
+-    nohup sh "$MODDIR/auto.sh" run > "$STATE/worker.log" 2>&1 < /dev/null &
++    [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] && [ ! -f "$STATE/coordinated-restart" ] || exit 0
++    nohup sh "$MODDIR/auto.sh" run >> "$STATE/worker.log" 2>&1 < /dev/null &
+     ;;
+ run)
+-    [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || exit 0
+-    sh "$MODDIR/cold-boot-reset.sh" "$MODDIR" "$STATE" || { : > "$MODDIR/disable"; exit 1; }
++    [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] && [ ! -f "$STATE/coordinated-restart" ] || exit 0
++    # Service and restart-started can arrive together; claim the worker before the boot guard.
+     mkdir "$STATE/worker" 2>/dev/null || exit 0
++    sh "$MODDIR/cold-boot-reset.sh" "$MODDIR" "$STATE" || {
++        : > "$MODDIR/disable"; rmdir "$STATE/worker"; exit 1
++    }
+     mkdir -p "$MODDIR/autostart"
+     finish() {
+         code=$?
+@@ -109,7 +112,7 @@
+     done
+     n=0
+     while :; do
+-        [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || exit 0
++        [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] && [ ! -f "$STATE/coordinated-restart" ] || exit 0
+         target=$(identity || true)
+         if [ -n "$target" ] && "$BIN" "${target%%:*}" status > "$STATE/status.txt" 2>&1; then break; fi
+         n=$((n+1)); [ "$n" -lt 30 ] || exit 1
+@@ -120,7 +123,7 @@
+     printf '%s\n' "$target" > "$STATE/target"
+     [ "$(identity)" = "$target" ]
+     "$BIN" "${target%%:*}" on
+-    while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
++    while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] && [ ! -f "$STATE/coordinated-restart" ]; do
+         [ "$(identity || true)" = "$target" ] || { echo 'SystemUI exited; no automatic reapplication'; exit 1; }
+         "$BIN" "${target%%:*}" status > "$STATE/status.txt"
+         grep -q '^ENABLED ' "$STATE/status.txt" || exit 1
+diff --git a/modules/systemui-optimization/module/module.prop b/modules/systemui-optimization/module/module.prop
+--- a/modules/systemui-optimization/module/module.prop
++++ b/modules/systemui-optimization/module/module.prop
+@@ -1,7 +1,6 @@
+-id=gxr_systemui_optimization
+-name=Galaxy XR SystemUI Optimization (experimental)
+-version=0.4.0-experimental
+-versionCode=400
+-author=4uva4ek
+-description=Experimental combined duplicate-wait, selected-depth and hidden-panel churn fixes in pinned SystemUI private memory. Notifications and selected dialogs bench-tested; CPU savings vary. Installed disabled; Action reports status and recovery.
+-updateJson=https://raw.githubusercontent.com/4uva4ek/galaxyxr-modules/main/updates/systemui-optimization.json
++id=gxr_systemui_optimization_azj2
++name=Galaxy XR SystemUI Optimization (AZJ2)
++version=0.4.0-azj2.1-experimental
++versionCode=402
++author=4uva4ek; AZJ2 port by booinspace
++description=Experimental AZJ2 duplicate-wait, selected-depth and hidden-panel churn fixes in private SystemUI memory. Activation, coexistence and performance untested on AZJ2. Installs disabled; Action reports status and recovery.
+diff --git a/modules/systemui-optimization/native/main.cpp b/modules/systemui-optimization/native/main.cpp
+--- a/modules/systemui-optimization/native/main.cpp
++++ b/modules/systemui-optimization/native/main.cpp
+@@ -1,4 +1,5 @@
+ // Private SystemUI memory only. No remote calls, mounts or original file writes.
++#include <sys/system_properties.h>
+ #include <sys/ptrace.h>
+ #include <sys/uio.h>
+ #include <sys/stat.h>
+@@ -271,6 +272,9 @@
+ }
+ int main(int argc,char** argv) {
+     try {
++        char build[PROP_VALUE_MAX]{};
++        need(__system_property_get("ro.build.display.id",build)>0 &&
++             !strcmp(build,"UML2.260301.001.I610UES3AZJ2"),"AZJ2 firmware required");
+         need(argc==3,"Usage: gxr-systemui PID status|on|off|test|test-ui");
+         char* end=nullptr; long value=strtol(argv[1],&end,10);
+         need(end && !*end && value>1 && value<INT32_MAX,"Invalid PID");
+diff --git a/modules/systemui-optimization/prepare_panels.py b/modules/systemui-optimization/prepare_panels.py
+--- a/modules/systemui-optimization/prepare_panels.py
++++ b/modules/systemui-optimization/prepare_panels.py
+@@ -1,5 +1,5 @@
+ """Build the standalone panel candidate payload and byte signatures."""
+-import argparse, hashlib, json, struct, subprocess
++import argparse, hashlib, json, struct, subprocess, os, platform
+ from pathlib import Path
+ p=argparse.ArgumentParser()
+ p.add_argument("--ndk",required=True,type=Path)
+@@ -9,25 +9,48 @@
+ src=Path(__file__).resolve().parent/"native"
+ out=root/"dist/systemui-optimization/panels"
+ out.mkdir(parents=True,exist_ok=True)
+-tc=a.ndk/"toolchains/llvm/prebuilt/windows-x86_64/bin"
++tc=a.ndk/"toolchains/llvm/prebuilt"/{"Linux":"linux-x86_64","Darwin":"darwin-x86_64","Windows":"windows-x86_64"}[platform.system()]/"bin"
++def tool(name): return tc/(name+(".cmd" if name.endswith("clang") else ".exe") if os.name=="nt" else name)
+ def run(*args): subprocess.run([str(x) for x in args],check=True)
+-run(tc/"aarch64-linux-android34-clang.cmd","-Os","-fPIC","-ffreestanding","-fno-builtin",
++run(tool("aarch64-linux-android34-clang"),"-Os","-fPIC","-ffreestanding","-fno-builtin",
+     "-fno-stack-protector","-mgeneral-regs-only","-mno-outline-atomics","-mbranch-protection=bti",
+     "-c",src/"panel_payload.c","-o",out/"payload.o")
+-run(tc/"ld.lld.exe","-Ttext=0","--entry=panel_frame",out/"payload.o","-o",out/"payload.elf")
+-run(tc/"llvm-objcopy.exe","-O","binary","--only-section=.text",out/"payload.elf",out/"payload.bin")
++run(tool("ld.lld"),"-Ttext=0","--entry=panel_frame",out/"payload.o","-o",out/"payload.elf")
++run(tool("llvm-objcopy"),"-O","binary","--only-section=.text",out/"payload.elf",out/"payload.bin")
+ symbols={}
+-for line in subprocess.check_output([str(tc/"llvm-nm.exe"),"-n",str(out/"payload.elf")],text=True).splitlines():
++for line in subprocess.check_output([str(tool("llvm-nm")),"-n",str(out/"payload.elf")],text=True).splitlines():
+     fields=line.split()
+     if len(fields)==3: symbols[fields[2]]=int(fields[0],16)
+ space=""".text
+ .global frame_hook, mirror_hook, frame_config, frame_target, frame_return, mirror_config, mirror_target
+ frame_hook:
+-stp x0,x30,[sp,#-16]!
++stp x0,x1,[sp,#-0xb0]!
++stp x2,x3,[sp,#0x10]
++stp x4,x5,[sp,#0x20]
++stp x6,x7,[sp,#0x30]
++stp x8,x9,[sp,#0x40]
++stp x10,x11,[sp,#0x50]
++stp x12,x13,[sp,#0x60]
++stp x14,x15,[sp,#0x70]
++stp x16,x17,[sp,#0x80]
++stp x18,x30,[sp,#0x90]
++mrs x16,nzcv
++str x16,[sp,#0xa0]
+ ldr x0,frame_config
+ ldr x16,frame_target
+ blr x16
+-ldp x0,x30,[sp],#16
++ldr x16,[sp,#0xa0]
++msr nzcv,x16
++ldp x2,x3,[sp,#0x10]
++ldp x4,x5,[sp,#0x20]
++ldp x6,x7,[sp,#0x30]
++ldp x8,x9,[sp,#0x40]
++ldp x10,x11,[sp,#0x50]
++ldp x12,x13,[sp,#0x60]
++ldp x14,x15,[sp,#0x70]
++ldp x16,x17,[sp,#0x80]
++ldp x18,x30,[sp,#0x90]
++ldp x0,x1,[sp],#0xb0
+ str d8,[sp,#-0x70]!
+ frame_return: b .
+ .balign 8
+@@ -61,20 +84,21 @@
+ blobs={"PAYLOAD":(out/"payload.bin").read_bytes()}
+ for name,assembly in [("space",space),("owner","\n".join(owner))]:
+     (out/f"{name}.S").write_text(assembly+"\n")
+-    run(tc/"aarch64-linux-android34-clang.cmd","-c",out/f"{name}.S","-o",out/f"{name}.o")
+-    run(tc/"ld.lld.exe","-Ttext=0",f"--entry={name if name=='owner' else 'frame'}_hook",
++    run(tool("aarch64-linux-android34-clang"),"-c",out/f"{name}.S","-o",out/f"{name}.o")
++    run(tool("ld.lld"),"-Ttext=0",f"--entry={name if name=='owner' else 'frame'}_hook",
+         out/f"{name}.o","-o",out/f"{name}.elf")
+-    run(tc/"llvm-objcopy.exe","-O","binary","--only-section=.text",out/f"{name}.elf",out/f"{name}.bin")
++    run(tool("llvm-objcopy"),"-O","binary","--only-section=.text",out/f"{name}.elf",out/f"{name}.bin")
+     blobs[name.upper()]=(out/f"{name}.bin").read_bytes()
+-    for line in subprocess.check_output([str(tc/"llvm-nm.exe"),"-n",str(out/f"{name}.elf")],text=True).splitlines():
++    for line in subprocess.check_output([str(tool("llvm-nm")),"-n",str(out/f"{name}.elf")],text=True).splitlines():
+         fields=line.split()
+         if len(fields)==3: symbols[fields[2]]=int(fields[0],16)
+ for name,sha,sites in [
+-    ("libspaceflinger_jni_vulkan.so","7c72d2bd2284223877d5d5701fb69206fd2a202fa4867650b606c9245ff36fc5",[("FRAME_EXPECTED",0x4d3ee04),("MIRROR_EXPECTED",0x4d15490)]),
+-    ("libsysui_jni_soong_vulkan.so","d2060072c6046354d470a5e4949f762160a7d89f20310a8652e57c67805c0863",[("OWNER_EXPECTED",0x4ce92c8)])]:
++    ("libspaceflinger_jni_vulkan.so","8342a55dd62163af3653dcf2153a842e243377897ced3ca00703603d275a3d7f",[("FRAME_EXPECTED",0x4d3ee04),("MIRROR_EXPECTED",0x4d15490)]),
++    ("libsysui_jni_soong_vulkan.so","f6e34cf42f704c5d3ced9cca18dd392abf4925cde9e30c3b752a34be4102a809",[("OWNER_EXPECTED",0x4ce92c8)])]:
+     lib=(a.libraries/name).read_bytes()
+     assert hashlib.sha256(lib).hexdigest()==sha
+     for label,site in sites: blobs[label]=lib[site:site+32]
++assert len(blobs["SPACE"]) <= 256
+ assert len(blobs["PAYLOAD"])+256<0xac8
+ assert len(blobs["OWNER"])<0x5c8
+ header=""
+diff --git a/modules/systemui-optimization/tests/test_lifecycle.py b/modules/systemui-optimization/tests/test_lifecycle.py
+--- a/modules/systemui-optimization/tests/test_lifecycle.py
++++ b/modules/systemui-optimization/tests/test_lifecycle.py
+@@ -3,22 +3,33 @@
+ import re
+ import subprocess
+ import tempfile
++import time
+ from pathlib import Path
+ 
+ HERE = Path(__file__).resolve().parents[1]
+-BASH = r"C:\Program Files\Git\bin\bash.exe"
++BASH = os.environ.get("GXR_BASH", "bash")
+ SOURCE = (HERE / "module/auto.sh").read_text()
+-for scenario in ("normal", "exit", "applyfail", "restorefail", "pending", "hashfail"):
++for scenario in ("normal", "coordinated", "duplicate", "exit", "applyfail", "restorefail", "pending", "hashfail", "guardfail"):
+     with tempfile.TemporaryDirectory(prefix="gxr-systemui-life-") as temp:
+         root = Path(temp)
+         (root / "bin").mkdir()
+         state = root / "ram"
+         (root / "fake-identity").write_text("123:100\n")
+         (root / "cold-boot-reset.sh").write_text("exit 0\n")
++        if scenario == "guardfail":
++            (root / "cold-boot-reset.sh").write_text("exit 1\n")
++        if scenario == "duplicate":
++            (root / "cold-boot-reset.sh").write_text('''#!/bin/sh
++mkdir "$1/guard-lock" 2>/dev/null || exit 2
++trap 'rmdir "$1/guard-lock"' EXIT
++echo entered >> "$1/guard-calls"
++: > "$1/guard-entered"
++while [ ! -f "$1/release-guard" ]; do /bin/sleep 0.01; done
++''')
+         if scenario == "pending":
+             (root / "autostart").mkdir()
+             (root / "autostart/pending").write_text("")
+-        script = SOURCE.replace("STATE=/dev/gxr_systemui_optimization", f"STATE='{state.as_posix()}'")
++        script = SOURCE.replace("STATE=/dev/gxr_systemui_optimization_azj2", f"STATE='{state.as_posix()}'")
+         script = re.sub(r"identity\(\) \{.*?\n\}", 'identity() { cat "$MODDIR/fake-identity"; }', script, count=1, flags=re.S)
+         script = script.replace(
+             "awk '$2==\"/dev\" && $3==\"tmpfs\" {ok=1} END {exit !ok}' /proc/mounts",
+@@ -36,6 +47,7 @@
+ sleep() {
+     case "$SCENARIO" in
+       exit) : > "$MODDIR/fake-identity"; rm -f "$MODDIR/active";;
++      coordinated|duplicate) : > "$STATE/coordinated-restart";;
+       *) : > "$MODDIR/disable";;
+     esac
+ }
+@@ -51,8 +63,26 @@
+ status) [ ! -f "$MODDIR/status-broken" ] || exit 1; if [ -f "$MODDIR/active" ]; then echo 'ENABLED - fixture'; else echo 'DISABLED - fixture'; fi;;
+ esac
+ """, newline="\n")
+-        result = subprocess.run([BASH, (root / "auto.sh").as_posix(), "run"], capture_output=True,
+-                                text=True, env={**os.environ, "SCENARIO": scenario}, timeout=10)
++        (root / "bin/gxr-systemui").chmod(0o755)
++        arguments = [BASH, (root / "auto.sh").as_posix(), "run"]
++        environment = {**os.environ, "SCENARIO": scenario}
++        if scenario == "duplicate":
++            first = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
++                                     text=True, env=environment)
++            try:
++                deadline = time.monotonic() + 5
++                while not (root / "guard-entered").exists() and first.poll() is None and time.monotonic() < deadline:
++                    time.sleep(.01)
++                assert (root / "guard-entered").exists(), "first startup did not enter boot guard"
++                duplicate = subprocess.run(arguments, capture_output=True, text=True, env=environment, timeout=3)
++                assert duplicate.returncode == 0 and not (root / "disable").exists(), duplicate
++                assert (root / "guard-calls").read_text() == "entered\n"
++            finally:
++                (root / "release-guard").write_text("")
++                stdout, stderr = first.communicate(timeout=10)
++            result = subprocess.CompletedProcess(arguments, first.returncode, stdout, stderr)
++        else:
++            result = subprocess.run(arguments, capture_output=True, text=True, env=environment, timeout=10)
+         operations = (root / "operations").read_text() if (root / "operations").exists() else ""
+         assert not (state / "worker").exists(), (scenario, result.stdout, result.stderr)
+         if scenario == "normal":
+@@ -73,11 +103,15 @@
+                                   capture_output=True,text=True,
+                                   env={**os.environ,"SCENARIO":scenario},timeout=10)
+             assert report.returncode!=0 and "GXR_UPDATE_STATE=STOCK" not in report.stdout,report
++        elif scenario in ("coordinated", "duplicate"):
++            assert result.returncode == 0 and "on\n" in operations and "off\n" in operations
++            assert not (root / "disable").exists() and not (root / "autostart/pending").exists()
++            assert not (root / "autostart/failed").exists() and not (root / "active").exists()
+         else:
+             assert result.returncode != 0, (scenario, result.stdout, result.stderr)
+             assert (root / "disable").exists()
+-            assert (root / "autostart/failed").exists()
+-            if scenario in ("pending", "hashfail"):
++            assert (root / "autostart/failed").exists() or scenario == "guardfail"
++            if scenario in ("pending", "hashfail", "guardfail"):
+                 assert "on\n" not in operations
+             if scenario == "restorefail":
+                 assert (root / "active").exists()
+diff --git a/modules/systemui-optimization/tests/test_panel_payload.py b/modules/systemui-optimization/tests/test_panel_payload.py
+--- a/modules/systemui-optimization/tests/test_panel_payload.py
++++ b/modules/systemui-optimization/tests/test_panel_payload.py
+@@ -104,6 +104,8 @@
+                  0x14000000|((finish-base-symbols["frame_return"])//4 & 0x3ffffff))
+ f.mem_write(base,bytes(frame_code))
+ f.reg_write(UC_ARM64_REG_SP,stack)
++for j in range(19):f.reg_write(UC_ARM64_REG_X0+j,0x100+j)
++f.reg_write(UC_ARM64_REG_NZCV,0xa0000000)
+ f.reg_write(UC_ARM64_REG_X0,node)
+ f.reg_write(UC_ARM64_REG_LR,0xabcd000000123456)
+ f.reg_write(UC_ARM64_REG_D8,0x123456789abcdef0)
+@@ -112,11 +114,14 @@
+     assert m.reg_read(UC_ARM64_REG_X0)==state
+     lr=m.reg_read(UC_ARM64_REG_LR)
+     for j in range(19):m.reg_write(UC_ARM64_REG_X0+j,0xbad)
++    m.reg_write(UC_ARM64_REG_NZCV,0)
+     m.reg_write(UC_ARM64_REG_PC,lr)
+ f.hook_add(UC_HOOK_CODE,frame_clobber)
+ f.emu_start(base,finish,count=1000)
+ assert f.reg_read(UC_ARM64_REG_X0)==node
++for j in range(1,19):assert f.reg_read(UC_ARM64_REG_X0+j)==0x100+j,j
++assert f.reg_read(UC_ARM64_REG_NZCV)==0xa0000000
+ assert f.reg_read(UC_ARM64_REG_LR)==0xabcd000000123456
+ assert f.reg_read(UC_ARM64_REG_SP)==stack-0x70
+ assert bytes(f.mem_read(stack-0x70,8))==struct.pack("<Q",0x123456789abcdef0)
+-print("PASS ARM64: frame hook preserves signed LR/this and replays original D8/SP prologue")
++print("PASS ARM64: frame hook preserves all incoming GP registers, flags and signed LR; replays D8/SP prologue")

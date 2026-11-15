@@ -18,6 +18,8 @@ and angle. Both roll directions and stopping while tilted are confirmed on AZJ2;
 read the [install and workspace guide](modules/saved-workspaces/README.md).
 Built packages and checksums are published through GitHub Releases. This
 repository tracks source, documentation, tests and build scripts.
+Current source builds Window Controls 0.1.76 with Home passthrough blending,
+Follow me grab alignment and diagnostic log retention fixes.
 
 Window Controls now includes **hand positional rotation**: grab a window to
 move it and turn your hand to rotate it in pitch, yaw and roll. Action opens
@@ -47,15 +49,16 @@ See the [Home pins guide](docs/HOME-PINS.md).
 Candidate 0.1.63 clips scrolling app rows inside their existing area so they
 cannot draw over the system toolbar. Icon sizes stay unchanged; headset
 validation of this layout fix is pending.
-The 90-second startup-age check now covers ordinary starts as well as planned
-restarts. A 0.1.26 crash occurred before that age; the native cause is unresolved.
-The verified restart hook now queues startup directly, with the normal service
-entry point as a fallback, so activation does not depend on opening Action.
+Window Controls starts after restart coordination and runtime readiness checks,
+with no fixed SystemUI-age delay. The restart hook queues startup automatically;
+same-boot crash quarantine remains active.
 
 | Module | What it does | Creator and source | Guide |
 | --- | --- | --- | --- |
 | Quick Settings pinch (experimental, integrated into Window Controls) | Left thumb–index hold toggles the native Quick Settings panel; optional immediate trigger, tracking/release guards and saved settings; confirmed working on AZJ2 | [booinspace](https://github.com/booinspace), using AZJ2's native Quick Settings action | [Use, limitations and build](modules/quick-settings-gesture/README.md) |
 | App audio mixer (experimental, integrated into Window Controls) | Native volume-panel sliders, saved levels, bypass, reset and simultaneous media playback; AudioTrack/MediaPlayer only; confirmed working on AZJ2 | [booinspace](https://github.com/booinspace), using Android playback and VolumeShaper APIs | [Use, limitations and build](modules/audio-mixer/README.md) |
+| Passthrough blend (experimental, integrated into Window Controls) | Native Quick Settings slider blends the selected Home environment with camera passthrough; Home only; installation confirmed, blend visuals pending | [booinspace](https://github.com/booinspace), using AZJ2's native mixed-reality state manager | [Use and build](modules/quick-settings-gesture/README.md#passthrough-blend) |
+| SystemUI Optimization (experimental AZJ2 port) | Removes duplicate swapchain waits, corrects depth selection and coalesces hidden-panel updates; exact AZJ2 library gates; activation and stock restoration verified, performance unmeasured | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/releases/tag/systemui-optimization%2Fv0.4.0); AZJ2 port by [booinspace](https://github.com/booinspace) | [Comparison, install and build](modules/systemui-optimization/README.md) |
 | OpenXR QUALITY (experimental AZJ2 port) | Holds the head-tracking QUALITY camera request during visible OpenXR sessions, with thermal and cleanup guards; device activation untested | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/openxr-quality); AZJ2 port by [booinspace](https://github.com/booinspace) | [Install, build and validate](modules/openxr-quality/README.md) |
 | Wi-Fi ADB | Authenticated ADB TCP on port 5555; unchanged upstream 1.0.2 packaged for this collection and confirmed working on AZJ2 | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/wifi-adb); pinned packaging by [booinspace](https://github.com/booinspace) | [Install, connect and build](modules/wifi-adb/README.md) |
 | Window controls | Curvature, white-rim removal, pill auto-hide, wrist rotation, aligned move/resize boundaries, 10× movement distance, sliders, 50 Home pins, and movable/resizable app pins, including eligible preinstalled apps, over immersive apps with gaze fading and continued VR input | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, app pins, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410); dispatch patch based on [Kolektori's work](https://github.com/frida-packages/frida-java-bridge/pull/401) | [Install, use, build and recover](docs/CURVATURE.md) |

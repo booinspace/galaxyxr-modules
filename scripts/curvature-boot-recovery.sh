@@ -30,10 +30,13 @@ clear_after_reboot() {
       ;;
   esac
   sh "$MODDIR/recovery.sh" export || return 1
+  history=/data/adb/gxr-window-curvature-diagnostics
+  [ ! -L "$history" ] || return 1
+  (umask 077; mkdir -p "$history") || return 1
   suffix="pre-reset.$(date +%s).$$"
   for name in runtime.log failure session-open; do
     if [ -f "$MODDIR/$name" ]; then
-      archived="$MODDIR/$name.$suffix"
+      archived="$history/$name.$suffix"
       [ ! -e "$archived" ] && mv "$MODDIR/$name" "$archived" || return 1
     fi
   done

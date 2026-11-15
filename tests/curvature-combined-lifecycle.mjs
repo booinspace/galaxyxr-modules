@@ -7,6 +7,7 @@ const source = readFileSync(process.argv[2], 'utf8').replace(/^import .*;\n/gm, 
 const withRotation = process.argv.includes('--rotation');
 const withBoundary = process.argv.includes('--boundary');
 const withHomePins = process.argv.includes('--home-pins');
+const withPassthroughBlend = source.includes('let passthroughBlend = null;');
 const borderlessDelay = process.argv.includes('--no-borderless-delay') ? 0 : 45000;
 const leaseMatch = /const SUPERVISOR_LEASE_MS = (\d+);/.exec(source);
 const supervisorLeaseMs = leaseMatch === null ? 2500 : Number(leaseMatch[1]);
@@ -15,7 +16,7 @@ if (leaseMatch !== null) {
     assert.equal(supervisorLeaseMs, Number(/SUPERVISOR_LEASE_MS = (\d+);/.exec(flags)[1]));
 }
 
-function session({homePinsUnavailable = false} = {}) {
+function session({homePinsUnavailable = false, passthroughRestored = true} = {}) {
     const timers = new Map(), intervals = new Map(), logs = [];
     let attached = 0, pulses = 0, stopRequests = 0, restored = false, id = 0, clock = 0;
     let rotationRestored = false, rotationStops = 0, rotationError = '', home = true;
@@ -24,6 +25,7 @@ function session({homePinsUnavailable = false} = {}) {
     let distancePermission = () => false;
     let homePinsRestored = !withHomePins, homePinsStops = 0, homePinsDisposals = 0;
     let homePinsPermission = () => false;
+    let passthroughPulses = 0, passthroughStops = 0, passthroughAllowed = () => false;
     const rotationPulses = [];
     let rotationPins = [], pinIds = [], pinGrab = false, grabPermission = () => false;
     const grabPulses = [];
@@ -59,6 +61,11 @@ function session({homePinsUnavailable = false} = {}) {
         parseFeatureCommand, applyFeatureSettings,
         installWorkspaces: () => ({accept: () => false, pulse() {}, stop() {}, isStopped: () => true, status: () => ({})}),
         installAudioMixer: () => ({stop() {}, isStopped: () => true, status: () => 'test'}),
+        installPassthroughBlend: (_Java, _factory, allowed) => {
+            passthroughAllowed = allowed;
+            return {pulse() { passthroughPulses++; }, stop() { passthroughStops++; },
+                isStopped: () => passthroughRestored, status: () => ({})};
+        },
         parseQuickSettingsCommand: () => null,
         installQuickSettingsGesture: () => ({configure() {}, stop() {}, getDiagnostics: () => ({})}),
         installGrabRotation: (_Java, _controller, allowed) => {
@@ -120,6 +127,9 @@ function session({homePinsUnavailable = false} = {}) {
         pins(ids, allowed) { pinIds = ids; pinGrab = allowed; },
         grabAllowed: () => grabPermission(), grabPulses,
         setClock(value) { clock = value; },
+        passthroughPulses: () => passthroughPulses, passthroughStops: () => passthroughStops,
+        passthroughAllowed: () => passthroughAllowed(),
+        restorePassthrough() { passthroughRestored = true; },
     };
 }
 
@@ -272,4 +282,23 @@ if (withHomePins) {
     unavailable.context.pollAgent();
     assert.equal(unavailable.intervals.size, 0);
     console.log('PASS: Home cleanup gates detach; unavailable Home APIs preserve existing controls');
+}
+
+if (withPassthroughBlend) {
+    const blend = session({passthroughRestored: false});
+    await blend.context.rpc.exports.init();
+    blend.context.rpc.exports.onFridaStdin('pulse');
+    blend.context.pollAgent();
+    assert.equal(blend.passthroughPulses(), 1);
+    assert.equal(blend.passthroughAllowed(), true);
+    blend.context.rpc.exports.onFridaStdin('stop');
+    assert.equal(blend.passthroughStops(), 1);
+    assert.equal(blend.passthroughAllowed(), false);
+    blend.restored();blend.restoreRotation();blend.restoreBoundary();blend.restoreHomePins();
+    blend.context.pollAgent();
+    assert.equal(blend.intervals.size, 1, 'shared runtime must wait for native slider cleanup');
+    blend.restorePassthrough();blend.context.pollAgent();
+    assert.equal(blend.intervals.size, 0);
+    assert.ok(blend.logs.some(line => line.startsWith('GXR_CURVATURE_STOPPED')));
+    console.log('PASS: passthrough heartbeat and confirmed cleanup before shared detach');
 }

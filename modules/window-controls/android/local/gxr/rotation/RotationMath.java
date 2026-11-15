@@ -30,6 +30,42 @@ public final class RotationMath {
         });
     }
 
+    /** Extracts rotation from the compositor's column-major affine pose without its scale. */
+    public static float[] fromMatrix(float[] matrix) {
+        if (matrix == null || matrix.length != 16) throw new IllegalArgumentException("Expected a spatial pose");
+        for (float value : matrix) if (!Float.isFinite(value)) throw new IllegalArgumentException("Invalid spatial pose");
+        if (Math.abs(matrix[3]) > .001 || Math.abs(matrix[7]) > .001
+                || Math.abs(matrix[11]) > .001 || Math.abs(matrix[15] - 1) > .001) {
+            throw new IllegalArgumentException("Expected an affine spatial pose");
+        }
+        float[] m = matrix.clone();
+        for (int column = 0; column < 3; column++) {
+            int i = column * 4;
+            double scale = Math.sqrt((double)m[i]*m[i] + (double)m[i+1]*m[i+1] + (double)m[i+2]*m[i+2]);
+            if (scale < .000001) throw new IllegalArgumentException("Singular spatial pose");
+            for (int row = 0; row < 3; row++) m[i+row] /= scale;
+        }
+        for (int a = 0; a < 3; a++) for (int b = a+1; b < 3; b++) {
+            float dot = 0;
+            for (int row = 0; row < 3; row++) dot += m[a*4+row]*m[b*4+row];
+            if (Math.abs(dot) > .001) throw new IllegalArgumentException("Sheared spatial pose");
+        }
+        double determinant = m[0]*(m[5]*m[10]-m[9]*m[6])
+                - m[4]*(m[1]*m[10]-m[9]*m[2]) + m[8]*(m[1]*m[6]-m[5]*m[2]);
+        if (determinant < .999) throw new IllegalArgumentException("Reflected spatial pose");
+        double w,x,y,z,trace=m[0]+m[5]+m[10];
+        if (trace > 0) {
+            double s=2*Math.sqrt(trace+1);w=s/4;x=(m[6]-m[9])/s;y=(m[8]-m[2])/s;z=(m[1]-m[4])/s;
+        } else if (m[0] > m[5] && m[0] > m[10]) {
+            double s=2*Math.sqrt(1+m[0]-m[5]-m[10]);w=(m[6]-m[9])/s;x=s/4;y=(m[4]+m[1])/s;z=(m[8]+m[2])/s;
+        } else if (m[5] > m[10]) {
+            double s=2*Math.sqrt(1+m[5]-m[0]-m[10]);w=(m[8]-m[2])/s;x=(m[4]+m[1])/s;y=s/4;z=(m[9]+m[6])/s;
+        } else {
+            double s=2*Math.sqrt(1+m[10]-m[0]-m[5]);w=(m[1]-m[4])/s;x=(m[8]+m[2])/s;y=(m[9]+m[6])/s;z=s/4;
+        }
+        return normalize(new float[]{(float)w,(float)x,(float)y,(float)z});
+    }
+
     /** Keeps the grabbed world orientation independent of stock parent-facing updates. */
     public static float[] grabbed(float[] handStart, float[] handNow, float[] parentStart,
             float[] parentNow, float[] localStart) {

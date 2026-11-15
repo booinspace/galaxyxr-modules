@@ -30,6 +30,42 @@ Holding continuously toggles only once. Tracking loss requires a new tracked
 release before rearming, and queued requests expire after 250 ms. Android must
 report the display interactive before the native action is dispatched.
 
+## Passthrough blend
+
+Window Controls 0.1.76 also exposes AZJ2's native dimmer slider in Quick Settings
+for **Home Space camera/environment blending**. Move it to zero for the selected
+Home environment, 100% for camera passthrough, or between them for a mixture.
+With a black Home environment, an intermediate setting should darken the room
+view while retaining the app windows. This rendering result still needs the
+headset test; it has not been measured or visually confirmed.
+
+The adapter updates the native Home passthrough alpha and keeps the Home
+background active while both layers are needed. The corrected build supplies empty
+update lists to the native transaction and reserves one full row in Quick Settings'
+window, surface crop and XR visible bounds. Closing the panel and reopening it
+does not add another row. Samsung's resource overlay anchors the media card
+directly to brightness, so the adapter reconnects it below the blend slider
+without a reverse constraint. Both original layout parameters and the original
+panel size are restored when the module stops.
+The blend row follows the native brightness row's visibility, so it stays hidden
+while a detail or customization page is open. It leaves app-owned passthrough
+and higher-priority safety or lockscreen states unchanged; the slider is disabled
+there. Stopping Window Controls restores the original slider listener, visibility
+and Home alpha. A five-second supervisor lease also releases the adapter after
+a lost connection. There is no separate APK or additional injector.
+
+Build this candidate with the normal tool arguments below and add
+`--workspaces-host`. Its output is
+`gxr-window-curvature-0.1.76-azj2-log-fix-disabled.zip`. Test it before
+enabling the separate SystemUI Optimization candidate, so the two changes can
+be evaluated independently. The active Samsung overlay and the enlarged render
+buffer were checked on the headset, and the owner confirmed that 0.1.76 installs.
+The new media anchor, spacing and blend
+rendering still need a headset check. Host tests cover copied layout parameters
+and exact rollback, native widget reuse, user-only updates, Home-only composition,
+critical/app-state isolation and cleanup.
+They cannot establish camera compositing on the headset.
+
 ## Package and build
 
 The source lives under `modules/quick-settings-gesture/` and

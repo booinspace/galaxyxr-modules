@@ -8,6 +8,26 @@ existing taskbar Quick Settings action and reuses Window Controls' hand input
 reader. Source under `modules/quick-settings-gesture/` is MIT licensed. No vendor
 implementation is distributed. See the [shortcut guide](../modules/quick-settings-gesture/README.md).
 
+## Passthrough blend
+
+[booinspace](https://github.com/booinspace) wrote the Quick Settings slider adapter,
+Home-state blending policy and cleanup tests in `modules/quick-settings-gesture/`
+and `scripts/curvature-passthrough-blend-agent.mjs`. It reuses AZJ2's native slider
+and mixed-reality state manager. New code is MIT licensed; no vendor implementation
+is copied or distributed. It shares the existing Window Controls injector and
+notices. See the [blend guide](../modules/quick-settings-gesture/README.md#passthrough-blend).
+
+## SystemUI Optimization
+
+[4uva4ek](https://github.com/4uva4ek) authored
+[SystemUI Optimization v0.4.0](https://github.com/4uva4ek/galaxyxr-modules/tree/3ccf395bf12d0525c257d043568c7d7b4e4014a6/modules/systemui-optimization).
+The build recipe fetches that exact commit and applies booinspace's AZJ2 hash,
+firmware guard, ARM64 register preservation and coordinated restart patch.
+The ZIP retains upstream native and NDK notices, the local patch and its build
+receipt. The pinned upstream has no standalone LICENSE file and is not relicensed
+by this collection. Full vendor libraries and generated compatibility headers
+stay outside Git. See the [port and evaluation](../modules/systemui-optimization/README.md).
+
 ## App audio mixer
 
 [booinspace](https://github.com/booinspace) wrote the native volume-panel extension,

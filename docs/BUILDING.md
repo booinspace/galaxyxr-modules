@@ -90,6 +90,7 @@ export GXR_ANDROID_JAR="$GXR_SDK/platforms/android-37.0/android.jar"
 | `build-openxr-quality-azj2.py` | NDK 28.2.13676358 and host C++17 compiler; [OpenXR QUALITY](../modules/openxr-quality/README.md) |
 | `build-root-face-tracking-azj2.py` | NDK 29.0.14206865; [root face tracking](../modules/root-face-tracking/README.md) |
 | `build-saved-workspaces-azj2.py` | JDK, Android SDK/R8 and Node.js; [Saved Workspaces](../modules/saved-workspaces/README.md). Build the Window Controls host with `build-quick-controls-azj2.py --workspaces-host` and its normal tool arguments. |
+| `build-systemui-optimization-azj2.py` | NDK 29.0.14206865, Python Unicorn and private exact AZJ2 libraries; [SystemUI Optimization](../modules/systemui-optimization/README.md) |
 | `build-wifi-adb-azj2.py` | Python and Git; [Wi-Fi ADB](../modules/wifi-adb/README.md) |
 | `build-mvhevc-azj2.py` | Python; [MV-HEVC eye fix](../modules/mvhevc-eye-fix/README.md) |
 | `build-port-diagnostics.py` | Python; packages the read-only firmware exporter |

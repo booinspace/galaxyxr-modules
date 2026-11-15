@@ -145,7 +145,7 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
                 enabled = true;
                 counters = {source: 'stock-hand-input', legacyCalls: 0, axrifCalls: 0,
                     handCalls: 0, acceptedSamples: 0, moveStarts: 0, selectedGrabs: 0,
-                    deliveredGrabs: 0, lastSample: 'none'};
+                    deliveredGrabs: 0, missingPose: 0, lastSample: 'none'};
                 lastDiagnostic = nowMs();
                 controller.setGrabEnabled(true);
                 input = observeHandActions((data, source) => {
@@ -164,6 +164,13 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
                 callback = type.onEvent.overload('android.graphics.CPM$ReformEvent');
                 const original = callback;
                 callback.implementation = function (event) {
+                    let basis = null;
+                    if (enabled && permitted() && event.type.value === 1 && event.state.value === 1) {
+                        try {
+                            const live = controller.parentOrientation(this['this$0'].value);
+                            if (live !== null) basis = [0, 1, 2, 3].map(i => live[i]);
+                        } catch (error) { unavailable(error); }
+                    }
                     const result = original.call(this, event);
                     if (!enabled || !permitted() || event.type.value !== 1) return result;
                     try {
@@ -177,9 +184,10 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
                         if (state === 1) {
                             counters.moveStarts++;
                             const hand = chooseGrabHand(hands, now);
-                            if (hand !== null && gestures.size < 16) {
+                            if (basis === null) counters.missingPose++;
+                            if (hand !== null && basis !== null && gestures.size < 16) {
                                 counters.selectedGrabs++;
-                                gestures.set(key, {hand, last: -Infinity, started: false});
+                                gestures.set(key, {hand, basis, last: -Infinity, started: false});
                             }
                         }
                         const gesture = gestures.get(key);
@@ -199,7 +207,8 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
                         counters.deliveredGrabs++;
                         controller.onGrab(owner, id, phase,
                             Java.array('float', valid ? hand.q : [1, 0, 0, 0]),
-                            Java.array('float', parent === null ? [1, 0, 0, 0] : parent), Math.floor(now));
+                            Java.array('float', parent === null ? [1, 0, 0, 0] : parent),
+                            Java.array('float', gesture.basis), Math.floor(now));
                         if (phase === 0 || state === 3) gestures.delete(key);
                     } catch (error) { unavailable(error); }
                     return result;

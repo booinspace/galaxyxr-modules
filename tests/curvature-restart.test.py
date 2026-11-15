@@ -51,6 +51,7 @@ class RestartTest(unittest.TestCase):
                      "restart-prepare.sh", "restart-stopped.sh", "restart-started.sh", "restart-abort.sh"):
             text = (SOURCE / name).read_text()
             for before, after in {
+                "/data/adb/gxr-window-curvature-diagnostics": str(self.root / "history"),
                 "/data/adb/modules": str(self.root / "modules"),
                 "/data/local/tmp": str(self.root / "localtmp"),
                 "/dev/gxr-": str(self.root / "dev/gxr-"),
