@@ -1,6 +1,6 @@
 id=gxr_saved_workspaces
 name=Galaxy XR Saved Workspaces (AZJ2)
-version=0.1.2-azj2-experimental
-versionCode=3
+version=0.1.5-azj2-experimental
+versionCode=6
 author=booinspace
-description=Experimental native Recents workspaces: facing-relative app layouts, sizes, rotations, curves and pins. Requires Window Controls 0.1.70+. Installs disabled; read README.md.
+description=Experimental native Recents workspaces: facing-relative app layouts, optional Follow me, sizes, rotations, curves and pins. Requires Window Controls 0.1.70+. Installs disabled; read README.md.

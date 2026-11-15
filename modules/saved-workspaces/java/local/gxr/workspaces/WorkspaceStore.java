@@ -132,6 +132,24 @@ public final class WorkspaceStore {
         return index.get(index.active);
     }
     public boolean exists() { return file.exists(); }
+    public boolean followEnabled() throws IOException {
+        File preference = new File(file.getParentFile(), "follow");
+        if (!Files.exists(preference.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return false;
+        if (!Files.isRegularFile(preference.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) || preference.length() != 1) throw new IOException("Invalid Follow me preference");
+        try (java.io.InputStream in = Files.newInputStream(preference.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            int value = in.read();
+            if ((value != 0 && value != 1) || in.read() != -1) throw new IOException("Invalid Follow me preference");
+            return value == 1;
+        }
+    }
+    public void setFollowEnabled(boolean enabled) throws IOException {
+        File preference = new File(file.getParentFile(), "follow"), temporary = new File(file.getParentFile(), "follow.new");
+        if (Files.isSymbolicLink(preference.toPath()) || Files.isSymbolicLink(temporary.toPath())) throw new IOException("Invalid Follow me preference");
+        try {
+            try (FileOutputStream out = new FileOutputStream(temporary)) { out.write(enabled ? 1 : 0); out.getFD().sync(); }
+            Files.move(temporary.toPath(), preference.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally { Files.deleteIfExists(temporary.toPath()); }
+    }
     private static int bounded(int value, int min, int max) throws IOException {
         if (value < min || value > max) throw new IOException("Invalid workspace item count");
         return value;

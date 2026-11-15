@@ -9,6 +9,10 @@ It requires **Window Controls 0.1.70 or later** for its native SystemUI adapter.
 There is one SystemUI injector, owned by Window Controls. Disabling Saved
 Workspaces removes its Recents strip and tracking without stopping Window Controls.
 
+Download the [Saved Workspaces ZIP](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/gxr-saved-workspaces-azj2-0.1.5-disabled.zip)
+and its [Window Controls host](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/gxr-window-curvature-0.1.70-azj2-workspaces-host-disabled.zip)
+from GitHub Releases. Check both files against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/SHA256SUMS).
+
 ## Install and first test
 
 1. Keep a copy of your working Window Controls ZIP. Close pinned windows and
@@ -16,7 +20,7 @@ Workspaces removes its Recents strip and tracking without stopping Window Contro
    Use the existing Window Controls update/recovery procedure; leave DirtyFrag
    Autorun off. Do not reset a crash quarantine in the same full boot.
 2. Enable Window Controls and verify its ordinary window controls first.
-3. Install `gxr-saved-workspaces-azj2-0.1.2-disabled.zip`. It installs disabled.
+3. Install `gxr-saved-workspaces-azj2-0.1.5-disabled.zip`. It installs disabled.
    Enable it and tap Action to start its root worker. No extra restart is needed.
 4. Close and reopen Recent apps using the normal right-pinch gesture. Confirm
    the one-time setup message before switching layouts. Desk initially adopts
@@ -32,6 +36,27 @@ scene immediately; it also saves automatically every ten seconds and before a
 switch. The current card is outlined and labelled.
 The workspace controls use the native app-suggestions row’s centered width, with
 extra workspace cards available by scrolling sideways.
+
+## Follow me
+
+Open a workspace, then turn **Follow me** on in the workspace strip. Its ordinary
+and pinned windows follow your room position and facing direction using AZJ2's
+native facing reference and the stock window-placement API. Small head movements
+are ignored; position following starts after about 12 cm and turning starts after
+40 degrees. Movement eases in from rest, with slower turns capped at 60 degrees
+per second. Head pitch and roll do not tilt the whole layout.
+Each window keeps its size, curvature and custom rotation. An immersive app's
+own world is not moved.
+
+Turn Follow me off to leave the windows at their current room positions. The
+preference survives restarts, but following resumes only after you open a
+workspace; startup does not close or reopen apps. Following pauses while a
+workspace is opening. Saved positions use the moving workspace reference,
+so walking across the room is not saved as a change to the layout.
+
+Follow me is off by default. The 0.1.5 headset test on AZJ2 confirmed smoother
+ordinary-window movement, the wider eased turns, dragging and switching following
+off. Immersive pins and extended idle/wake still need testing.
 
 ## Switching behavior
 
@@ -68,7 +93,8 @@ or Curvature enabled in Window Controls when their saved values use those featur
 
 ## Stop, recovery and data
 
-Turn Saved Workspaces off to remove the strip. The current app windows stay open.
+Turn Saved Workspaces off to remove the strip and stop following. The
+current app windows stay open at their last positions.
 The root worker and native UI use independent heartbeat checks. Coordinated GXR
 restart hooks stop the worker and reconnect it after Window Controls returns.
 Root itself remains temporary and must be restored after a full reboot.

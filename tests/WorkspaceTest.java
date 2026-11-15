@@ -25,9 +25,10 @@ public final class WorkspaceTest {
         float[] anchor=WorkspaceMath.identity();
         boolean live=true, failLaunchOnce, loseOnLaunch, failReady;
         long waitedMillis;
+        float[] capturedAnchor;
         public void check(){if(!live)throw new IllegalStateException("Host stopped");}
         public float[] anchor(){return anchor.clone();}
-        public List<Workspace.Window> capture(float[] ignored){return new ArrayList<>(current);}
+        public List<Workspace.Window> capture(float[] placement){capturedAnchor=placement.clone();return new ArrayList<>(current);}
         public void preflight(Workspace.Window w){if(w.component.equals(failComponent))throw new IllegalArgumentException("App missing");}
         public void pause(Set<String> packages)throws Exception{
             WorkspaceTest.check(!store.read().pending.isEmpty(),"Changed audio before saving the switch journal");
@@ -52,7 +53,74 @@ public final class WorkspaceTest {
         public void restore(Workspace.Window w,float[] world){events.add("restore:"+w.packageName());}
         public void progress(String message){}
     }
+    static float[] facing(float x,float y,float z,double yaw) {
+        float c=(float)Math.cos(yaw),n=(float)Math.sin(yaw);
+        float[] m=WorkspaceMath.identity();m[0]=2*c;m[2]=-2*n;m[5]=2;m[8]=2*n;m[10]=2*c;
+        m[12]=x-2*n;m[13]=y;m[14]=z-2*c;return m;
+    }
+    static void followMotion() throws Exception {
+        float[] start=facing(0,0,0,0),layout=WorkspaceMath.identity();layout[14]=-2;
+        near(WorkspaceFollowMotion.head(start),WorkspaceMath.identity());
+        WorkspaceFollowMotion motion=new WorkspaceFollowMotion(start,layout,0);
+        for(int i=1;i<=30;i++)near(motion.update(facing(.04f,0,0,Math.toRadians(10)),i*33),layout);
+        float[] target=facing(1,.7f,-.5f,Math.toRadians(45));
+        for(int i=31;i<=150;i++)motion.update(target,i*33);
+        float[] expected=WorkspaceMath.multiply(WorkspaceFollowMotion.head(target),layout),moved=motion.placement();
+        for(int i=0;i<16;i++)check(Math.abs(expected[i]-moved[i])<.045,"Follow did not converge at "+i);
+        float[] turn=facing(0,0,0,Math.toRadians(179));
+        WorkspaceFollowMotion boundary=new WorkspaceFollowMotion(turn,layout,0);
+        near(boundary.update(facing(0,0,0,Math.toRadians(-179)),33),layout);
+        motion.rebase(target,moved,5000);near(motion.update(target,5033),moved);
+        fails(()->motion.update(target,10));
+        WorkspaceFollowMotion.WindowPose pose=new WorkspaceFollowMotion.WindowPose(layout,layout);
+        float[] sent=pose.at(moved);pose.sent(sent,42,100);
+        check(!pose.observe(layout,0,moved,110)&&pose.waiting(),"An old callback was mistaken for a user drag");
+        check(!pose.observe(sent,42,moved,130)&&!pose.waiting(),"Own placement was mistaken for user input");
+        float[] dragged=sent.clone();dragged[12]+=.3f;
+        check(pose.observe(dragged,43,moved,140),"A native move did not pause following");near(pose.at(moved),dragged);
+        float[] another=moved.clone();another[12]+=1;
+        near(WorkspaceMath.relative(another,pose.at(another)),WorkspaceMath.relative(moved,dragged));
+        WorkspaceFollowMotion.WindowPose stalled=new WorkspaceFollowMotion.WindowPose(layout,layout);
+        stalled.sent(sent,42,0);fails(()->stalled.observe(layout,0,moved,501));
+        float[] fine=layout.clone();fine[12]+=.0005f;
+        check(WorkspaceFollowMotion.near(fine,layout)&&WorkspaceFollowMotion.placementChanged(fine,layout),"Slow follow motion was quantized to the larger input-recognition tolerance");
+        WorkspaceFollowMotion wider=new WorkspaceFollowMotion(start,layout,0);
+        for(int i=1;i<=30;i++)near(wider.update(facing(0,0,0,Math.toRadians(35)),i*11),layout);
+        float[] first=wider.update(facing(0,0,0,Math.toRadians(90)),341);
+        check(Math.abs(Math.atan2(first[8],first[10]))<Math.toRadians(.3),"Turning jumped instead of easing from rest");
+        float previousYaw=(float)Math.atan2(first[8],first[10]);
+        for(int i=1;i<=300;i++){
+            float[] value=wider.update(facing(0,0,0,Math.toRadians(90)),341+i*11);
+            float nextYaw=(float)Math.atan2(value[8],value[10]);
+            check(Math.abs(nextYaw-previousYaw)<=Math.toRadians(60)*.011+.00001,"Turn rate cap was exceeded");previousYaw=nextYaw;
+        }
+        check(Math.abs(previousYaw-Math.PI/2)<Math.toRadians(1.1),"Smooth turning did not converge");
+        WorkspaceFollowMotion pipelineMotion=new WorkspaceFollowMotion(start,layout,0);
+        WorkspaceFollowMotion.WindowPose pipeline=new WorkspaceFollowMotion.WindowPose(layout,layout);
+        List<float[]> queued=new ArrayList<>();
+        for(int i=1;i<=8;i++){
+            float[] frame=layout.clone();frame[12]=i*.02f;queued.add(frame);pipeline.sent(frame,100+i,i*10);
+        }
+        check(!pipeline.canSend(),"Unbounded placement pipeline");fails(()->pipeline.sent(layout,200,90));
+        check(!pipeline.observe(queued.get(0),101,layout,100),"First late own reply was mistaken for a drag");
+        check(pipeline.canSend()&&pipeline.waiting(),"Animation still waits for every reply");
+        check(!pipeline.observe(queued.get(5),106,layout,110),"Coalesced acknowledgements were mistaken for a drag");
+        check(!pipeline.observe(queued.get(1),102,layout,120),"An older queued callback was mistaken for a drag");
+        float[] latestAnchor=layout.clone();latestAnchor[12]=2;
+        near(WorkspaceMath.relative(latestAnchor,pipeline.at(latestAnchor)),WorkspaceMath.identity());
+        float[] userMove=queued.get(5).clone();userMove[12]+=.3f;
+        check(pipeline.observe(userMove,106,layout,130),"User move during the pipeline was lost");
+        near(pipeline.at(layout),userMove);check(!pipeline.observe(userMove,106,layout,140),"A stationary held window repeatedly restarted the pause");
+        check(!pipeline.observe(queued.get(7),108,layout,150),"A draining own reply overwrote user intent");near(pipeline.at(layout),userMove);
+        WorkspaceFollowMotion.WindowPose sleeping=new WorkspaceFollowMotion.WindowPose(layout,layout);
+        sleeping.sent(queued.get(0),501,0);sleeping.pause();
+        check(!sleeping.waiting()&&!sleeping.observe(queued.get(0),501,layout,5000),"An idle tracking gap discarded the follow setting or looked like a drag");
+        near(sleeping.at(layout),layout);
+        pipelineMotion.pause(1000);near(pipelineMotion.update(start,1000),layout);
+        float[] invalid=target.clone();invalid[0]=Float.NaN;fails(()->WorkspaceFollowMotion.head(invalid));
+    }
     public static void main(String[] ignored)throws Exception{
+        followMotion();
         float[] previous=WorkspaceMath.identity();previous[12]=3;previous[14]=-2;
         float[] next=WorkspaceMath.identity();next[0]=0;next[2]=-1;next[8]=1;next[10]=0;next[12]=8;
         float[] world=WorkspaceMath.identity();world[12]=4;world[13]=1;world[14]=-4;
@@ -84,6 +152,16 @@ public final class WorkspaceTest {
         store.save(ready);
         check(store.read().get(desk.id).windows.get(0).curvature==.25f,"Curvature round-trip");
         byte[] valid=Files.readAllBytes(new File(root,"layouts.gxrw").toPath());
+        check(!store.followEnabled(),"Follow me must default off");
+        store.setFollowEnabled(true);check(new WorkspaceStore(root).followEnabled(),"Follow preference did not survive restart");
+        check(Arrays.equals(valid,Files.readAllBytes(new File(root,"layouts.gxrw").toPath())),"Follow preference changed saved layouts");
+        store.setFollowEnabled(false);check(!store.followEnabled(),"Follow preference did not turn off");
+        Files.write(new File(root,"follow").toPath(),new byte[]{3});fails(store::followEnabled);
+        Files.write(new File(root,"follow").toPath(),new byte[]{1,0});fails(store::followEnabled);
+        Files.delete(new File(root,"follow").toPath());
+        Files.createSymbolicLink(new File(root,"follow").toPath(),new File(root,"layouts.gxrw").toPath());
+        fails(store::followEnabled);fails(()->store.setFollowEnabled(true));
+        Files.delete(new File(root,"follow").toPath());
         byte[] corrupt=valid.clone();corrupt[corrupt.length-1]^=1;
         Files.write(new File(root,"layouts.gxrw").toPath(),corrupt);fails(store::read);
         Files.write(new File(root,"layouts.gxrw").toPath(),valid);
@@ -95,6 +173,10 @@ public final class WorkspaceTest {
         check(host.waitedMillis>=65000,"A slow immersive startup was interrupted");
         check(!host.events.contains("close:app.shared"),"Shared app was restarted");
         engine.autosave();check(store.read().get(cinema.id).windows.size()==3,"Active workspace autosave");
+        float[] following=next.clone();engine.updatePlacementAnchor(following);following[12]=99;
+        engine.autosave();near(host.capturedAnchor,next);
+        float[] returned=engine.placementAnchor();returned[12]=99;near(engine.placementAnchor(),next);
+        fails(()->engine.updatePlacementAnchor(singular));near(engine.placementAnchor(),next);
         host.events.clear();host.failComponent=old.component;
         fails(()->engine.switchTo(desk.id));
         check(host.events.isEmpty()&&store.read().active.equals(cinema.id),"Preflight failure changed windows");
@@ -133,6 +215,6 @@ public final class WorkspaceTest {
         check(unsafe.events.isEmpty(),"Unconfirmed switch changed apps");
         fails(()->new Workspace(desk.id,"bad\nname",0,Collections.emptyList()));
         fails(()->new Workspace(desk.id,"Duplicate",0,Arrays.asList(old,old)));
-        System.out.println("PASS: view-relative transforms, plans, shared media, bounded storage, checksum, preflight, slow startup, no automatic rollback, cancellation, retry and journal");
+        System.out.println("PASS: view-relative transforms, plans, shared media, bounded storage, checksum, preflight, slow startup, no automatic rollback, cancellation, retry, journal, follow easing, wider turns, turn-rate cap, yaw wrap, bounded late/coalesced acknowledgements, drag preservation and moving-anchor persistence");
     }
 }

@@ -32,7 +32,7 @@ final class WorkspacePanel implements AutoCloseable {
     private final TextView status;
     private final List<View> children = new ArrayList<>();
     private final List<ViewGroup.LayoutParams> positions = new ArrayList<>();
-    private final Button save, add, stopWaiting;
+    private final Button save, add, stopWaiting, follow;
     private final int foreground, surface, accent;
     private String rendered = "";
     private boolean closed;
@@ -70,6 +70,9 @@ final class WorkspacePanel implements AutoCloseable {
         stopWaiting.setOnClickListener(v -> controller.stopWaiting());
         stopWaiting.setVisibility(View.GONE); header.addView(stopWaiting);
         controls.addView(header);
+        follow = button("Follow me: Off", controller::toggleFollow);
+        follow.setContentDescription("Follow me. Move the workspace with your room position and facing direction.");
+        controls.addView(follow, new LinearLayout.LayoutParams(-1, dp(44)));
         status = label("", 13); status.setPadding(0, dp(4), 0, dp(12));
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE); controls.addView(status);
         setup = new LinearLayout(context); setup.setOrientation(LinearLayout.VERTICAL); setup.setPadding(0, dp(8), 0, dp(12));
@@ -113,6 +116,9 @@ final class WorkspacePanel implements AutoCloseable {
                 + " is unfinished. Apps were kept open. Select it to retry, or choose another workspace. " + controller.text());
         save.setEnabled(!busy && controller.bound()); add.setEnabled(!busy && index.acknowledged && index.workspaces.size() < Workspace.MAX_WORKSPACES);
         setup.setVisibility(index.acknowledged ? View.GONE : View.VISIBLE);
+        follow.setEnabled(!busy && (controller.bound() || controller.follows()));
+        follow.setText(controller.follows() ? controller.bound() ? "Follow me: On" : "Follow me: Paused — open a workspace" : "Follow me: Off");
+        follow.setStateDescription(controller.follows() ? "On" : "Off");
         StringBuilder key = new StringBuilder(index.active).append(index.pending).append(busy).append(index.acknowledged);
         for (Workspace workspace : index.workspaces) key.append(workspace.id).append(workspace.name).append(workspace.windows.size()).append(controller.preview(workspace.id).lastModified());
         if (rendered.equals(key.toString())) return; rendered = key.toString();

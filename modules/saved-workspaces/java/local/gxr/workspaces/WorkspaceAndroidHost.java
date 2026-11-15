@@ -33,6 +33,9 @@ final class WorkspaceAndroidHost implements WorkspaceEngine.Host, Closeable {
     private final Handler owner;
     private final CpmLayouts layouts;
     private final WorkspaceIpc root;
+    private CpmFollow following;
+    private long followScannedAt;
+    private final Set<Integer> followIds=new HashSet<>();
     private final BooleanSupplier live;
     private final Consumer<String> status;
     private final Map<String,Workspace.Window> previous=new HashMap<>();
@@ -80,6 +83,7 @@ final class WorkspaceAndroidHost implements WorkspaceEngine.Host, Closeable {
                 }
                 throw new IllegalStateException("Restore minimized windows once before saving their layout",unavailable);
             }
+            if(following!=null)world=following.savedWorld(info.taskId,layouts.reference(info.taskId),world,anchor);
             lastWorld.put(component,world.clone());
             float[] rotation=(float[])AndroidAccess.on(owner,()->AndroidAccess.call(bridge,"rotation",new Class<?>[]{int.class},info.taskId));
             float curve=((Number)AndroidAccess.call(bridge,"curvature",new Class<?>[]{int.class},info.taskId)).floatValue();
@@ -191,6 +195,29 @@ final class WorkspaceAndroidHost implements WorkspaceEngine.Host, Closeable {
                     new Class<?>[]{Class.forName("android.window.WindowContainerToken")},AndroidAccess.field(info,"token"));return null;
         });
     }
+    float[] follow(float[] anchor)throws Exception{
+        check();long now=SystemClock.uptimeMillis();
+        if(following==null||now-followScannedAt>=1000){
+            Set<Integer> ids=new HashSet<>();
+            for(RunningTaskInfo info:AndroidAccess.tasks()){
+                if(!AndroidAccess.allowed(context,info)||(AndroidAccess.mode(info)!=1&&!pinned(info)))continue;
+                boolean available=AndroidAccess.on(owner,()->AndroidAccess.call(bridge,"desktopTask",new Class<?>[]{int.class},info.taskId)!=null
+                        &&AndroidAccess.call(repository,"getTaskSubspace",new Class<?>[]{int.class},info.taskId)!=null);
+                if(available)ids.add(info.taskId);
+            }
+            followIds.clear();followIds.addAll(ids);followScannedAt=now;layouts.sweep(ids);
+        }
+        if(following==null)following=new CpmFollow(layouts,owner,anchor);
+        following.update(followIds);return following.placement();
+    }
+    float[] stopFollowing()throws Exception{
+        if(following==null)return null;
+        try{following.settle();return following.placement();}
+        finally{following.close();following=null;}
+    }
     @Override public void progress(String value){status.accept(value);}
-    @Override public void close()throws java.io.IOException{layouts.close();}
+    @Override public void close()throws java.io.IOException{
+        if(following!=null){following.close();following=null;}
+        layouts.close();
+    }
 }

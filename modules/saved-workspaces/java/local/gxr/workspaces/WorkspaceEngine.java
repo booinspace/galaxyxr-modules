@@ -32,6 +32,14 @@ public final class WorkspaceEngine {
     public WorkspaceStore.Index index() { return index; }
     public boolean busy() { return busy.get(); }
     public boolean bound() { return bound; }
+    public float[] placementAnchor() {
+        if (!bound) throw new IllegalStateException("Open a workspace before following it");
+        return WorkspaceMath.checked(currentAnchor);
+    }
+    public void updatePlacementAnchor(float[] placement) {
+        if (!bound || busy()) throw new IllegalStateException("Cannot move an unfinished workspace");
+        currentAnchor = WorkspaceMath.checked(placement);
+    }
     public void acknowledge() throws Exception {
         WorkspaceStore.Index previous = index;
         WorkspaceStore.Index next = new WorkspaceStore.Index(previous.workspaces, previous.active, previous.pending, true);

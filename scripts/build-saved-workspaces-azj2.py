@@ -22,7 +22,7 @@ def main():
         work = Path(temporary)
         tests = work / 'tests'
         tests.mkdir()
-        core = ('Workspace', 'WorkspaceMath', 'WorkspacePlan', 'WorkspaceStore', 'WorkspaceEngine', 'WorkspaceWait')
+        core = ('Workspace', 'WorkspaceMath', 'WorkspacePlan', 'WorkspaceStore', 'WorkspaceEngine', 'WorkspaceWait', 'WorkspaceFollowMotion')
         sources = module / 'java/local/gxr/workspaces'
         subprocess.run([str(args.javac), '--release', '8', '-d', str(tests),
                         *(str(sources / (name + '.java')) for name in core),
@@ -57,7 +57,7 @@ def main():
         }, indent=2, sort_keys=True) + '\n').encode()
         for path in module.glob('*.sh'):
             subprocess.run(['sh', '-n', str(path)], check=True)
-        package(args.output / 'gxr-saved-workspaces-azj2-0.1.2-disabled.zip', payload)
+        package(args.output / 'gxr-saved-workspaces-azj2-0.1.5-disabled.zip', payload)
 
 
 if __name__ == '__main__':

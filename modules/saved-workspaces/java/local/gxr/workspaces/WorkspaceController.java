@@ -25,6 +25,8 @@ public final class WorkspaceController {
     private final String token;
     private final WorkspaceAndroidHost host;
     private final WorkspaceEngine engine;
+    private final WorkspaceStore store;
+    private volatile boolean followEnabled;
     private volatile long heartbeat = SystemClock.uptimeMillis();
     private volatile boolean stopping, stopped, working;
     private volatile java.util.concurrent.Future<?> operation;
@@ -46,7 +48,10 @@ public final class WorkspaceController {
         directory.setReadable(false, false); directory.setWritable(false, false); directory.setExecutable(false, false);
         directory.setReadable(true, true); directory.setWritable(true, true); directory.setExecutable(true, true);
         host = new WorkspaceAndroidHost(context, bridge, directory, token, this::live, this::report);
-        engine = new WorkspaceEngine(new WorkspaceStore(directory), host);
+        store = new WorkspaceStore(directory);
+        engine = new WorkspaceEngine(store, host);
+        try { followEnabled = store.followEnabled(); }
+        catch (java.io.IOException error) { Log.w("GxrWorkspaces", "FOLLOW_PREFERENCE_IGNORED", error); }
         worker.setRemoveOnCancelPolicy(true);
         worker.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         main.post(watchdog);
@@ -56,9 +61,10 @@ public final class WorkspaceController {
         });
         worker.scheduleWithFixedDelay(() -> {
             if (!live() || working || !engine.bound()) return;
-            try { engine.autosave(); }
+            try { followTick(); engine.autosave(); }
             catch (Exception error) { report("Layout not saved: " + message(error)); }
         }, 10, 10, TimeUnit.SECONDS);
+        worker.scheduleWithFixedDelay(this::followTick, 500, 11, TimeUnit.MILLISECONDS);
         Log.i("GxrWorkspaces", "WORKSPACES_READY private native Recents strip");
     }
     public void pulse() { heartbeat = SystemClock.uptimeMillis(); }
@@ -69,11 +75,41 @@ public final class WorkspaceController {
         if (stopping || working) return;
         working = true; refresh();
         operation = worker.submit(() -> {
-            try { if (!live()) throw new IllegalStateException("Workspace service stopped"); work.run(); }
+            try {
+                if (!live()) throw new IllegalStateException("Workspace service stopped");
+                freezeFollow(); work.run();
+            }
             catch (Exception error) { Log.w("GxrWorkspaces", "WORKSPACE_OPERATION_FAILED", error); report(error instanceof InterruptedException ? "Opening paused; apps stay open. Choose a workspace to continue." : message(error)); }
             finally { working = false; refresh(); }
         });
     }
+    private void freezeFollow() throws Exception {
+        float[] anchor = host.stopFollowing();
+        if (anchor != null && engine.bound()) engine.updatePlacementAnchor(anchor);
+    }
+    private void followTick() {
+        if (!live() || working) return;
+        boolean wasEnabled = followEnabled;
+        try {
+            if (!engine.bound() || !followEnabled) { freezeFollow(); return; }
+            engine.updatePlacementAnchor(host.follow(engine.placementAnchor()));
+        }
+        catch (Exception error) {
+            followEnabled = false;
+            try { freezeFollow(); } catch (Exception cleanup) { error.addSuppressed(cleanup); }
+            if (wasEnabled) try { store.setFollowEnabled(false); } catch (Exception save) { error.addSuppressed(save); }
+            Log.w("GxrWorkspaces", "FOLLOW_STOPPED", error);
+            report("Follow me needs attention: " + message(error));
+        }
+    }
+    boolean follows() { return followEnabled; }
+    void toggleFollow() { run(() -> {
+        if (!engine.bound() && !followEnabled) throw new IllegalStateException("Open a workspace before enabling Follow me");
+        boolean enabled = !followEnabled;
+        store.setFollowEnabled(enabled); followEnabled = enabled;
+        engine.autosave();
+        report(enabled ? "Follow me on; windows move with you" : "Follow me off; windows stay in the room");
+    }); }
     void stopWaiting() {
         java.util.concurrent.Future<?> current = operation;
         if (engine.busy() && current != null) current.cancel(true);
@@ -180,8 +216,13 @@ public final class WorkspaceController {
         main.post(() -> { for (WorkspacePanel panel : panels) panel.close(); panels.clear(); });
         worker.shutdownNow();
         Thread cleanup = new Thread(() -> {
-            try { while (!worker.awaitTermination(1, TimeUnit.SECONDS)) { /* Leave the hook loaded until callbacks finish. */ } host.close(); stopped = true; report("STOPPED; current app windows were left open"); }
-            catch (Exception error) { Log.e("GxrWorkspaces", "WORKSPACES_CLEANUP_PENDING", error); }
+            try {
+                while (!worker.awaitTermination(1, TimeUnit.SECONDS)) { /* Leave the hook loaded until callbacks finish. */ }
+                while (!stopped) {
+                    try { host.close(); stopped = true; report("STOPPED; current app windows were left open"); }
+                    catch (Exception error) { Log.e("GxrWorkspaces", "WORKSPACES_CLEANUP_PENDING", error); Thread.sleep(1000); }
+                }
+            } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
         }, "workspace-cleanup");
         cleanup.setDaemon(true); cleanup.start();
     }

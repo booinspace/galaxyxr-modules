@@ -8,8 +8,12 @@ These are module ZIPs installed after temporary root is active. The separate
 [Galaxy XR root project](https://github.com/booinspace/galaxyxr-root) supplies
 DirtyFrag, KernelSU GXR and root instructions.
 
-Download [Window Controls 0.1.63](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.14/gxr-window-curvature-0.1.63-azj2-no-age-test-disabled.zip)
-and verify it against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/azj2-modules-2026.11.14/SHA256SUMS).
+Download [Window Controls 0.1.70](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/gxr-window-curvature-0.1.70-azj2-workspaces-host-disabled.zip)
+and [Saved Workspaces 0.1.5](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/gxr-saved-workspaces-azj2-0.1.5-disabled.zip)
+from the [Saved Workspaces release](https://github.com/booinspace/galaxyxr-modules/releases/tag/workspaces-v0.1.5-azj2).
+Verify downloads against [SHA256SUMS](https://github.com/booinspace/galaxyxr-modules/releases/download/workspaces-v0.1.5-azj2/SHA256SUMS).
+Saved Workspaces adds native Recents layouts and optional smooth **Follow me**;
+read its [install and workspace guide](modules/saved-workspaces/README.md).
 Other published module ZIPs are on the
 [AZJ2 modules release](https://github.com/booinspace/galaxyxr-modules/releases/tag/azj2-modules-2026.11.14).
 Built packages and checksums are published through GitHub Releases. This
@@ -55,7 +59,7 @@ entry point as a fallback, so activation does not depend on opening Action.
 | OpenXR QUALITY (experimental AZJ2 port) | Holds the head-tracking QUALITY camera request during visible OpenXR sessions, with thermal and cleanup guards; device activation untested | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/openxr-quality); AZJ2 port by [booinspace](https://github.com/booinspace) | [Install, build and validate](modules/openxr-quality/README.md) |
 | Wi-Fi ADB | Authenticated ADB TCP on port 5555; unchanged upstream 1.0.2 packaged for this collection and confirmed working on AZJ2 | [4uva4ek](https://github.com/4uva4ek/galaxyxr-modules/tree/9f096dfc79e72f180410bcfa5ba32b566734f62b/modules/wifi-adb); pinned packaging by [booinspace](https://github.com/booinspace) | [Install, connect and build](modules/wifi-adb/README.md) |
 | Window controls | Curvature, white-rim removal, pill auto-hide, wrist rotation, aligned move/resize boundaries, 10× movement distance, sliders, 50 Home pins, and movable/resizable app pins, including eligible preinstalled apps, over immersive apps with gaze fading and continued VR input | Curvature by [BlueScorpioVR](https://github.com/BlueScorpioVR/galaxyxr-modules); AZJ2 integration, borderless, rotation, app pins, Home pins and recovery by [booinspace](https://github.com/booinspace); ART/CMC patch by [pandasauce](https://github.com/frida-packages/frida-java-bridge/pull/410); dispatch patch based on [Kolektori's work](https://github.com/frida-packages/frida-java-bridge/pull/401) | [Install, use, build and recover](docs/CURVATURE.md) |
-| Saved Workspaces (experimental) | Standalone native Recents workspace previews; restores facing-relative app layouts, sizes, rotation, curvature and pins; pauses outgoing media | [booinspace](https://github.com/booinspace), using the Window Controls adapter | [Workspace guide](modules/saved-workspaces/README.md) |
+| Saved Workspaces (experimental) | Standalone native Recents workspace previews; restores facing-relative app layouts, sizes, rotation, curvature and pins; optional Follow me; pauses outgoing media | [booinspace](https://github.com/booinspace), using the Window Controls adapter | [Workspace guide](modules/saved-workspaces/README.md) |
 | Wear-aware display blanking | Development 0.2.0: panel off after 60 seconds without eyes while worn; 16 ms eye polling while blanked; keeps removal sleep | [booinspace](https://github.com/booinspace), using the stock AZJ2 wear, eye and display APIs | [Wear/display guide](modules/wear-dim/README.md) |
 | Mic gain boost | Action UI with live 0–40 step gain control, global or Virtual Desktop-only scope, and a local 10-second recording/playback test | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port and Action UI by [booinspace](https://github.com/booinspace) | [Mic guide](modules/mic-gain-boost/README.md) |
 | Passthrough anywhere | Toggles camera passthrough in an immersive app with a double-tap | [BreadDoesStuff](https://github.com/BreadDoesStuff/galaxy-xr-modules); AZJ2 port by [booinspace](https://github.com/booinspace) | [Passthrough guide](modules/passthrough-anywhere/README.md) |

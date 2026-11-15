@@ -18,6 +18,13 @@ final class CpmLayouts implements Closeable {
     private final Class<?> nodeType,updatesType,requestType,functionType;
     private final Map<Integer,Reference> references=new HashMap<>();
     private volatile boolean closed;
+    private Method placeRequest;
+    private java.lang.reflect.Constructor<?> placeExplicit;
+    private Object placeSpace;
+    static final class Snapshot {
+        final float[] matrix;final long stamp;final boolean attached;
+        Snapshot(float[] matrix,long stamp,boolean attached){this.matrix=matrix;this.stamp=stamp;this.attached=attached;}
+    }
     CpmLayouts(Context context,Object host)throws Exception{
         this.host=host;repository=AndroidAccess.field(host,"repository");owner=(Handler)AndroidAccess.get(host,"owner");
         ClassLoader loader=context.getClassLoader();
@@ -32,6 +39,7 @@ final class CpmLayouts implements Closeable {
         volatile float[] matrix;
         volatile long requestStamp;
         volatile boolean disposed;
+        volatile Snapshot latest;
         Reference(Object borrowed)throws Exception{
             node=AndroidAccess.get(borrowed,"deepCopy");
             if(node==borrowed||!node.equals(borrowed))throw new IllegalStateException("Expected an owned same-node reference");
@@ -43,7 +51,8 @@ final class CpmLayouts implements Closeable {
                             if((Boolean)AndroidAccess.field(update,"attached")){
                                 matrix=WorkspaceMath.checked((float[])AndroidAccess.field(update,"transform"));
                                 requestStamp=((Number)AndroidAccess.field(update,"requestTimestamp")).longValue();
-                            }
+                                latest=new Snapshot(matrix,requestStamp,true);
+                            }else latest=new Snapshot(null,0,false);
                         }catch(Exception invalid){matrix=null;}
                     }
                     return unit;
@@ -70,6 +79,12 @@ final class CpmLayouts implements Closeable {
             if(old!=null&&!old.disposed&&old.node.equals(node))return old;
             if(old!=null)old.close();
             Reference created=new Reference(node);references.put(id,created);return created;
+        });
+    }
+    Map<Integer,Reference> liveReferences(java.util.Set<Integer> ids)throws Exception{
+        return AndroidAccess.on(owner,()->{
+            check();Map<Integer,Reference> result=new HashMap<>();
+            for(int id:ids)if(subspace(id)!=null)result.put(id,reference(id));return result;
         });
     }
     float[] matrix(int id)throws Exception{
@@ -138,28 +153,47 @@ final class CpmLayouts implements Closeable {
         }
     }
     @SuppressWarnings({"rawtypes","unchecked"})
-    void place(int id,float[] world)throws Exception{
-        WorkspaceMath.checked(world);Reference ref=reference(id);long stamp=System.nanoTime();
-        AndroidAccess.on(owner,()->{
-            check();Object task=subspace(id);if(task==null)throw new IllegalStateException("Window closed during restore");
-            Object transform=AndroidAccess.get(task,"getNonSpatializedTransformNode");
-            if(!ref.node.equals(AndroidAccess.get(transform,"getNode")))throw new IllegalStateException("Window node was replaced");
+    private void requestPlacement(Object updates,int id,Reference ref,float[] world,long stamp)throws Exception{
+        WorkspaceMath.checked(world);Object task=subspace(id);
+        if(task==null)throw new IllegalStateException("Window closed during restore");
+        Object transform=AndroidAccess.get(task,"getNonSpatializedTransformNode");
+        if(!ref.node.equals(AndroidAccess.get(transform,"getNode")))throw new IllegalStateException("Window node was replaced");
+        if(placeRequest==null){
             Method request=null;
             for(Method candidate:transform.getClass().getMethods())if(candidate.getName().equals("requestUpdate")&&candidate.getParameterTypes().length==4){
                 if(request!=null)throw new IllegalStateException("Ambiguous spatial transform API");request=candidate;
             }
             if(request==null)throw new NoSuchMethodException("AZJ2 requestUpdate");
             Class<?>[] types=request.getParameterTypes();
-            Object explicit=transform.getClass().getClassLoader().loadClass(types[2].getName()+"$ExplicitMatrix").getConstructor(float[].class).newInstance((Object)world.clone());
+            java.lang.reflect.Constructor<?> explicit=transform.getClass().getClassLoader().loadClass(types[2].getName()+"$ExplicitMatrix").getConstructor(float[].class);
             Object space=Enum.valueOf((Class)types[3],"OPENXR_UNBOUNDED");
-            Object updates=updatesType.getConstructor().newInstance();
-            try{AndroidAccess.invoke(request,transform,updates,stamp,explicit,space);AndroidAccess.get(updates,"apply");}
-            finally{AndroidAccess.get(updates,"close");}
-            return null;
+            placeExplicit=explicit;placeSpace=space;placeRequest=request;
+        }
+        Object explicit=placeExplicit.newInstance((Object)world.clone());
+        AndroidAccess.invoke(placeRequest,transform,updates,stamp,explicit,placeSpace);
+    }
+    void place(int id,float[] world)throws Exception{
+        WorkspaceMath.checked(world);Reference ref=reference(id);long stamp=System.nanoTime();
+        AndroidAccess.on(owner,()->{
+            check();Object updates=updatesType.getConstructor().newInstance();
+            try{requestPlacement(updates,id,ref,world,stamp);AndroidAccess.get(updates,"apply");}
+            finally{AndroidAccess.get(updates,"close");}return null;
         });
         long until=SystemClock.uptimeMillis()+2500;
         while(ref.requestStamp!=stamp&&SystemClock.uptimeMillis()<until){check();Thread.sleep(20);}
         if(ref.requestStamp!=stamp)throw new IllegalStateException("Window placement was not acknowledged");
+    }
+    java.util.Set<Integer> placeMany(Map<Integer,float[]> moves,long stamp)throws Exception{
+        return AndroidAccess.on(owner,()->{
+            check();java.util.Set<Integer> applied=new java.util.HashSet<>();Object updates=updatesType.getConstructor().newInstance();
+            try{
+                for(Map.Entry<Integer,float[]> move:moves.entrySet()){
+                    if(subspace(move.getKey())==null)continue;
+                    requestPlacement(updates,move.getKey(),reference(move.getKey()),move.getValue(),stamp);applied.add(move.getKey());
+                }
+                AndroidAccess.get(updates,"apply");return applied;
+            }finally{AndroidAccess.get(updates,"close");}
+        });
     }
     void sweep(java.util.Set<Integer> live)throws Exception{
         AndroidAccess.on(owner,()->{java.util.Iterator<Map.Entry<Integer,Reference>> it=references.entrySet().iterator();
