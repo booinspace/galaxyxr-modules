@@ -120,7 +120,7 @@ test('native observation covers both stock consumers, preserves delivery and can
     }};
     try {
         const basis = [.70710677, 0, 0, -.70710677], delivered = [];
-        const controller = {parentOrientation: () => { calls.push('pose'); return basis; },
+        const controller = {grabOrientation: () => { calls.push('pose'); return basis; },
             setGrabEnabled: value => calls.push(['enabled', value]),
             cancelGrabs: () => calls.push('cancel'),
             onGrab: (...args) => { delivered.push(args); calls.push(['grab', args[2]]); }};
@@ -133,17 +133,17 @@ test('native observation covers both stock consumers, preserves delivery and can
         sample();
         grab.pulse(true);
         const owner = {getId: () => 42, reformOptions: {value: {flags: {value: 8}}}};
-        const q = {w: {value: 1}, x: {value: 0}, y: {value: 0}, z: {value: 0}};
         function event(state) {
             return original.implementation.call({'this$0': {value: owner}},
-                {type: {value: 1}, id: {value: 7}, state: {value: state}, proposedOrientation: {value: q}});
+                {type: {value: 1}, id: {value: 7}, state: {value: state},
+                    get proposedOrientation() { throw new Error('A reform proposal is not an applied parent pose'); }});
         }
         assert.equal(event(1), 123);
         assert.ok(calls.indexOf('pose') < calls.indexOf('stock'), 'sample the followed pose before stock reform dispatch');
         basis[0] = 1; basis[3] = 0;
         now += 20; sample(1); event(2);
-        assert.deepEqual(delivered[0][5], [.70710677, 0, 0, -.70710677]);
-        assert.deepEqual(delivered[1][5], delivered[0][5], 'later stock proposals must not replace the captured starting pose');
+        assert.deepEqual(delivered[0][4], [.70710677, 0, 0, -.70710677]);
+        assert.deepEqual(delivered[1][4], delivered[0][4], 'later stock proposals must not replace the captured starting pose');
         hand.memory.writeUInt8(0, hand.grip + 0x28); sample(1);
         hand.memory.writeUInt8(1, hand.grip + 0x28);
         now += 20; sample(1); event(2);
@@ -161,6 +161,23 @@ test('native observation covers both stock consumers, preserves delivery and can
         assert.equal(diagnostics.acceptedSamples, 3);
         assert.equal(diagnostics.selectedGrabs, 1);
         assert.equal(diagnostics.q, undefined, 'diagnostics must not contain hand poses');
+        sample(); event(1);
+        now += 20;
+        hand.memory.writeFloatLE(Math.SQRT1_2, hand.grip + 0x44);
+        hand.memory.writeFloatLE(Math.SQRT1_2, hand.grip + 0x40);
+        hand.memory.writeFloatLE(0, hand.pinch + 0x2c);
+        sample(); event(3);
+        assert.equal(delivered.at(-1)[2], 3, 'release delivers the final hand orientation even after the pinch opens');
+        assert.ok(Math.abs(delivered.at(-1)[3][3] - Math.SQRT1_2) < 1e-6);
+        assert.equal(delivered.at(-1)[5], now, 'freshness uses the actual hand sample time');
+        hand.memory.writeFloatLE(.95, hand.pinch + 0x2c);
+        sample(); event(1);
+        hand.text(hand.event + 0x18, '/user/hand/right');
+        sample(); now += 20; event(2);
+        assert.equal(delivered.at(-1)[2], 0, 'a second pinching hand cancels rather than switching hands');
+        const cancelled = delivered.length;
+        event(2); event(3);
+        assert.equal(delivered.length, cancelled, 'cancelled grabs cannot resume without a new start');
         hand.memory.writeUInt32LE(1, hand.buckets + 0x78);
         sample();
         assert.ok(logs.includes('GXR_GRAB_STATE unavailable'));

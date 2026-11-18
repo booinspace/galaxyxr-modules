@@ -56,7 +56,7 @@ a lost connection. There is no separate APK or additional injector.
 
 Build this candidate with the normal tool arguments below and add
 `--workspaces-host`. Its output is
-`gxr-window-curvature-0.1.76-azj2-log-fix-disabled.zip`. Test it before
+`gxr-window-curvature-0.1.77-azj2-grab-sync-disabled.zip`. Test it before
 enabling the separate SystemUI Optimization candidate, so the two changes can
 be evaluated independently. The active Samsung overlay and the enlarged render
 buffer were checked on the headset, and the owner confirmed that 0.1.76 installs.

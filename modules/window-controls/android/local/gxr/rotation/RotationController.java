@@ -6,9 +6,11 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
+import java.io.Closeable;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -104,7 +106,7 @@ public final class RotationController {
     }
 
     public synchronized void cancelGrabs() {
-        for (Session session : sessions) session.handler.post(() -> session.grabId = -1);
+        for (Session session : sessions) session.handler.post(session::cancelGrab);
     }
 
     private static boolean excluded(String pkg) {
@@ -149,7 +151,7 @@ public final class RotationController {
         session.orientation = q;
         int[] degrees = RotationMath.degrees(q);
         System.arraycopy(degrees, 0, session.angles, 0, 3);
-        session.grabId = -1;
+        session.cancelGrab();
         session.update();
     }
 
@@ -212,8 +214,19 @@ public final class RotationController {
         return Arrays.copyOf(ids, count);
     }
 
-    /** Read before the stock grab callback can replace an explicit workspace placement. */
-    public float[] parentOrientation(Object transform) throws Exception {
+    /** Captures the visible world orientation before stock grab dispatch can move its parent. */
+    public synchronized float[] grabOrientation(Object transform) throws Exception {
+        float[] parent = parentOrientation(transform);
+        if (parent == null) return null;
+        for (Session session : sessions) {
+            if (!session.finished && !session.closing && session.transform.equals(transform)) {
+                return RotationMath.multiply(parent, session.orientation);
+            }
+        }
+        return parent;
+    }
+
+    private float[] parentOrientation(Object transform) throws Exception {
         List<?> replay = (List<?>) call(field(transform, "_spaceFlingerWorldFromNodeTransform"), "getReplayCache");
         if (replay.size() != 1 || !(replay.get(0) instanceof List)) return null;
         List<?> values = (List<?>) replay.get(0);
@@ -225,7 +238,7 @@ public final class RotationController {
 
     /** Reform callbacks can lack a looper; post rotation on the caption's owning view. */
     public synchronized void onGrab(Object transform, int id, int state, float[] hand,
-            float[] parent, float[] startingParent, long sampledAt) throws Exception {
+            float[] startingWorld, long sampledAt) throws Exception {
         if (!enabled || !grabEnabled || stopping) { grabStatus = "inactive"; return; }
         grabStatus = "not-bound";
         for (Window window : windows) {
@@ -251,7 +264,7 @@ public final class RotationController {
                     if (age < 0 || age > 150) {
                         grabStatus = "stale";
                         synchronized (RotationController.this) {
-                            for (Session old : sessions) if (old.taskId == taskId) old.grabId = -1;
+                            for (Session old : sessions) if (old.taskId == taskId) old.cancelGrab();
                         }
                         return;
                     }
@@ -260,26 +273,24 @@ public final class RotationController {
                     try { call(node, "getNativeHandle"); }
                     catch (IllegalStateException closed) { return; }
                     Session session = session(repository, node, taskId);
-                    if (state == 0 || state == 3) {
-                        if (session.grabId == id) session.grabId = -1;
-                        grabStatus = "released";
+                    if (state == 0) {
+                        if (session.grabId == id) session.cancelGrab();
+                        grabStatus = "cancelled";
                         return;
                     }
                     if (state == 1) {
+                        session.cancelGrab();
+                        session.observeParent();
                         session.grabId = id;
                         session.handStart = RotationMath.normalize(hand);
-                        session.parentStart = RotationMath.normalize(startingParent);
-                        session.localStart = session.orientation.clone();
+                        session.worldStart = RotationMath.normalize(startingWorld);
                     }
-                    if ((state == 1 || state == 2) && session.grabId == id) {
-                        if (session.currentTask() == null) { session.grabId = -1; return; }
-                        session.orientation = RotationMath.grabbed(session.handStart, hand, session.parentStart,
-                                parent, session.localStart);
-                        int[] angles = RotationMath.degrees(session.orientation);
-                        System.arraycopy(angles, 0, session.angles, 0, 3);
-                        session.update();
-                        grabStatus = state == 1 ? "started" : "applied";
-                        for (RotationMenu menu : session.menus) menu.root.post(menu::refresh);
+                    if ((state == 1 || state == 2 || state == 3) && session.grabId == id) {
+                        session.grabDeadline = sampledAt + 150;
+                        session.handNow = RotationMath.normalize(hand);
+                        session.applyGrab();
+                        if (state == 3) session.grabId = -1;
+                        grabStatus = state == 3 ? "released" : state == 1 ? "started" : "applied";
                     }
                 } catch (Exception failure) { fail(failure); }
             })) throw new IllegalStateException("Caption rejected its grab callback");
@@ -384,6 +395,7 @@ public final class RotationController {
     final class Session {
         final Object repository;
         final Object node;
+        final Object transform;
         final int taskId;
         final Handler handler;
         final List<RotationMenu> menus = new ArrayList<>();
@@ -391,8 +403,13 @@ public final class RotationController {
         float[] orientation = {1, 0, 0, 0};
         int grabId = -1;
         float[] handStart;
-        float[] parentStart;
-        float[] localStart;
+        float[] worldStart;
+        volatile float[] handNow;
+        float[] parentNow;
+        long parentTimestamp, grabDeadline;
+        volatile long grabEpoch;
+        Object parentNode;
+        Closeable parentListener;
         final Class<?> updatesType;
         final Method setOrientation;
         final Method apply;
@@ -423,6 +440,8 @@ public final class RotationController {
             if (looper == null) throw new IllegalStateException("Rotation needs a view looper");
             this.repository = repository;
             this.taskId = taskId;
+            transform = call(call(repository, "getTaskSubspace", new Class<?>[] {int.class}, taskId),
+                    "getNonSpatializedTransformNode");
             handler = new Handler(looper);
             updatesType = Class.forName("android.graphics.CPM$NodeUpdates");
             setOrientation = updatesType.getMethod("setOrientation", Class.forName("android.graphics.CPM$Node"),
@@ -457,6 +476,82 @@ public final class RotationController {
             return task;
         }
 
+        /** Owns a same-node listener; reform proposals may precede the applied parent transform. */
+        void observeParent() throws Exception {
+            parentNow = parentOrientation(transform);
+            if (parentListener != null) return;
+            ClassLoader loader = transform.getClass().getClassLoader();
+            Class<?> function = loader.loadClass("kotlin.jvm.functions.Function1");
+            Object unit = loader.loadClass("kotlin.Unit").getField("INSTANCE").get(null);
+            Object callback = Proxy.newProxyInstance(function.getClassLoader(), new Class<?>[] {function},
+                    (proxy, method, args) -> {
+                        if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
+                        if (method.getName().equals("equals")) return proxy == args[0];
+                        if (!method.getName().equals("invoke")) return "Window grab parent listener";
+                        if (handNow == null || closing || finished || stopping
+                                || SystemClock.uptimeMillis() > grabDeadline) return unit;
+                        try {
+                            long epoch = grabEpoch;
+                            Object sample = args[0];
+                            boolean attached = Boolean.TRUE.equals(field(sample, "attached"));
+                            float[] pose = attached ? ((float[]) field(sample, "transform")).clone() : null;
+                            long timestamp = ((Number) field(sample, "timestamp")).longValue();
+                            if (!handler.post(() -> {
+                                try {
+                                    if (closing || finished || handNow == null || grabEpoch != epoch
+                                            || timestamp < parentTimestamp) return;
+                                    parentTimestamp = timestamp;
+                                    if (pose == null) { cancelGrab(); return; }
+                                    parentNow = RotationMath.fromMatrix(pose);
+                                    applyGrab();
+                                } catch (Exception failure) { fail(failure); }
+                            })) throw new IllegalStateException("Grab owner stopped");
+                        } catch (Exception failure) { fail(failure); }
+                        return unit;
+                    });
+            Object borrowed = call(transform, "getNode");
+            parentNode = call(borrowed, "deepCopy");
+            try {
+                if (parentNode == borrowed || !parentNode.equals(borrowed)) {
+                    throw new IllegalStateException("Grab must own a reference to the same parent");
+                }
+                Object factory = loader.loadClass("com.android.systemui.xr.spatial.CpmNodeTransformListenerFactory")
+                        .getConstructor().newInstance();
+                parentListener = (Closeable) call(factory, "create",
+                        new Class<?>[] {Class.forName("android.graphics.CPM$Node"), function}, parentNode, callback);
+            } catch (Exception failure) {
+                if (parentNode == borrowed) parentNode = null;
+                else try { call(parentNode, "close"); parentNode = null; }
+                catch (Exception cleanup) { failure.addSuppressed(cleanup); }
+                throw failure;
+            }
+        }
+
+        void cancelGrab() { grabId = -1; handNow = null; grabEpoch++; }
+
+        /** Reconciles late compositor updates, including the final movement after release. */
+        void applyGrab() throws Exception {
+            long now = SystemClock.uptimeMillis();
+            if (handNow == null) return;
+            if (closing || stopping || finished || !enabled || !grabEnabled || !canRotate(taskId)
+                    || now > grabDeadline || now - heartbeat > WindowFeatures.SUPERVISOR_LEASE_MS
+                    || currentTask() == null) { cancelGrab(); return; }
+            if (parentNow == null) return;
+            float[] next = RotationMath.grabbed(handStart, handNow, parentNow, worldStart);
+            float difference = 0, negatedDifference = 0;
+            for (int i = 0; i < 4; i++) {
+                float d = next[i] - orientation[i], n = next[i] + orientation[i];
+                difference += d*d; negatedDifference += n*n;
+            }
+            // Equivalent q/-q poses must not feed another compositor transaction back into the listener.
+            if (Math.min(difference, negatedDifference) < 1e-10f) return;
+            orientation = next;
+            int[] degrees = RotationMath.degrees(orientation);
+            System.arraycopy(degrees, 0, angles, 0, 3);
+            update();
+            for (RotationMenu menu : menus) menu.root.post(menu::refresh);
+        }
+
         RotationMenu addMenu(Object menu, View view, boolean sharedHost) throws Exception {
             if (closing || finished) return null;
             if (Looper.myLooper() != handler.getLooper()) throw new IllegalStateException("Menu looper changed");
@@ -476,7 +571,7 @@ public final class RotationController {
                 throw new IllegalStateException("Window is no longer eligible");
             }
             angles[axis] = degrees;
-            grabId = -1;
+            cancelGrab();
             orientation = RotationMath.orientation(angles[0], angles[1], angles[2]);
             update();
             Log.i("GXRRotation", "task=" + taskId + " pitch=" + angles[0]
@@ -486,7 +581,7 @@ public final class RotationController {
         void reset() throws Exception {
             if (currentTask() == null) throw new IllegalStateException("Task node was released");
             angles[0] = angles[1] = angles[2] = 0;
-            grabId = -1;
+            cancelGrab();
             orientation = new float[] {1, 0, 0, 0};
             update();
         }
@@ -505,9 +600,11 @@ public final class RotationController {
             closing = true;
             handler.removeCallbacks(watchdog);
             try {
+                cancelGrab();
+                if (parentListener != null) { parentListener.close(); parentListener = null; }
+                if (parentNode != null) { call(parentNode, "close"); parentNode = null; }
                 // The owned same-node reference remains valid after stock closes its wrapper.
                 angles[0] = angles[1] = angles[2] = 0;
-                grabId = -1;
                 orientation = new float[] {1, 0, 0, 0};
                 update();
                 for (RotationMenu menu : menus) menu.close(true);

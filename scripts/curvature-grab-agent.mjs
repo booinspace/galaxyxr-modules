@@ -113,12 +113,6 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
         state = value;
         console.log('GXR_GRAB_STATE ' + value);
     }
-    function quaternion(value) {
-        if (value === null) return null;
-        const q = [value.w.value, value.x.value, value.y.value, value.z.value];
-        const norm = q.reduce((sum, component) => sum + component * component, 0);
-        return q.every(Number.isFinite) && norm >= .8 && norm <= 1.2 ? q : null;
-    }
     function stop() {
         enabled = false;
         if (input !== null) input.stop();
@@ -164,11 +158,14 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
                 callback = type.onEvent.overload('android.graphics.CPM$ReformEvent');
                 const original = callback;
                 callback.implementation = function (event) {
-                    let basis = null;
+                    let start = null;
                     if (enabled && permitted() && event.type.value === 1 && event.state.value === 1) {
                         try {
-                            const live = controller.parentOrientation(this['this$0'].value);
-                            if (live !== null) basis = [0, 1, 2, 3].map(i => live[i]);
+                            const now = nowMs(), hand = chooseGrabHand(hands, now);
+                            const live = controller.grabOrientation(this['this$0'].value);
+                            if (hand !== null && live !== null) start = {hand,
+                                q: [...hands[hand].q], sampledAt: hands[hand].sampledAt,
+                                world: [0, 1, 2, 3].map(i => live[i])};
                         } catch (error) { unavailable(error); }
                     }
                     const result = original.call(this, event);
@@ -183,32 +180,26 @@ export function installGrabRotation(Java, controller, permitted, nowMs) {
                         const now = nowMs();
                         if (state === 1) {
                             counters.moveStarts++;
-                            const hand = chooseGrabHand(hands, now);
-                            if (basis === null) counters.missingPose++;
-                            if (hand !== null && basis !== null && gestures.size < 16) {
+                            gestures.delete(key);
+                            if (start === null) counters.missingPose++;
+                            if (start !== null && gestures.size < 16) {
                                 counters.selectedGrabs++;
-                                gestures.set(key, {hand, basis, last: -Infinity, started: false});
+                                gestures.set(key, {...start, last: -Infinity});
                             }
                         }
                         const gesture = gestures.get(key);
                         if (gesture === undefined) return result;
                         const hand = hands[gesture.hand];
-                        const valid = !gesture.invalid && hand !== null && now >= hand.sampledAt && now - hand.sampledAt <= 100;
-                        const parent = quaternion(event.proposedOrientation.value);
-                        if (!gesture.started) {
-                            if (!valid || state === 3) { gestures.delete(key); return result; }
-                            // Some start events have no proposed pose; wait for the first valid move.
-                            if (parent === null) return result;
-                        }
-                        const phase = valid && parent !== null ? (gesture.started ? state : 1) : 0;
+                        const valid = !gesture.invalid && hand !== null && now >= hand.sampledAt && now - hand.sampledAt <= 100
+                            && (state === 3 || chooseGrabHand(hands, now) === gesture.hand);
+                        const phase = valid ? state : 0;
                         if (phase === 2 && now - gesture.last < 16) return result;
-                        if (phase === 1) gesture.started = true;
                         gesture.last = now;
                         counters.deliveredGrabs++;
                         controller.onGrab(owner, id, phase,
-                            Java.array('float', valid ? hand.q : [1, 0, 0, 0]),
-                            Java.array('float', parent === null ? [1, 0, 0, 0] : parent),
-                            Java.array('float', gesture.basis), Math.floor(now));
+                            Java.array('float', valid ? (phase === 1 ? gesture.q : hand.q) : [1, 0, 0, 0]),
+                            Java.array('float', gesture.world),
+                            Math.floor(valid ? (phase === 1 ? gesture.sampledAt : hand.sampledAt) : now));
                         if (phase === 0 || state === 3) gestures.delete(key);
                     } catch (error) { unavailable(error); }
                     return result;

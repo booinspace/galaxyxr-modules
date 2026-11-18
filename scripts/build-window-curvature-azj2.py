@@ -964,8 +964,8 @@ def integrate_passthrough_blend(module: Path) -> None:
     replace(agent, "quickSettings: quickSettings === null ? null : quickSettings.getDiagnostics(),",
             "quickSettings: quickSettings === null ? null : quickSettings.getDiagnostics(), "
             "passthroughBlend: passthroughBlend === null ? null : passthroughBlend.status(),")
-    replace(module / "module.prop", "version=0.1.71-azj2-grab-pose", "version=0.1.76-azj2-log-fix")
-    replace(module / "module.prop", "versionCode=172", "versionCode=177")
+    replace(module / "module.prop", "version=0.1.71-azj2-grab-pose", "version=0.1.77-azj2-grab-sync")
+    replace(module / "module.prop", "versionCode=172", "versionCode=178")
     replace(module / "module.prop", "Window controls with opt-in immersive app pins",
             "Window controls with Home passthrough blending, opt-in immersive app pins")
 
@@ -1251,7 +1251,7 @@ def main() -> None:
                         "--java", str(args.java), "--ecj", str(args.ecj), "--r8", str(args.r8),
                         "--android-jar", str(args.android_jar), "--cache", str(args.cache),
                         "--output", str(args.output), "--no-update-feed"], cwd=work, check=True)
-        version = ("0.1.76-azj2-log-fix" if args.workspaces_host else
+        version = ("0.1.77-azj2-grab-sync" if args.workspaces_host else
                    "0.1.68-azj2-quick-controls" if args.quick_settings_gesture else
                    "0.1.64-azj2-audio-mixer" if args.audio_mixer else
                    "0.1.63-azj2-no-age-test" if args.no_startup_age else

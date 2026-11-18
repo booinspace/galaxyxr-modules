@@ -220,15 +220,26 @@ Grab rotation is **off by default**. It observes AZJ2's stock
 hand input events and uses the active hand-grip quaternion during stock move
 events. This follows the full hand orientation, including roll. The tracking
 frame is the hand grip/palm frame; it is not a raw wrist-joint measurement.
-The caption's owning view performs the node update; stock
-translation and event delivery continue. Each grab starts from the window's
-current compositor orientation, including a workspace's Follow me roll. The
-starting pose is captured before stock grab handling and is kept for the whole
-grab, so moving a side-lying layout does not level the window. The fix
-passes left/right side-lying controller regressions, and the headset owner confirmed
-0.1.72 starts a grab from the current followed angle.
-The math removes the parent's changing orientation before applying the hand
-delta. Roll is taken from the full hand quaternion.
+The caption's owning view performs the node update. Samsung's stock ray keeps
+selecting the window you point at and handling movement along all three position
+axes. Window Controls adds the hand's pitch, yaw and roll relative to the pose
+at the start of that grab, without changing the input ray or its hit position.
+
+The 0.1.77 candidate addresses repeated grabs adding a fixed turn after Follow
+me has moved or tilted a window. It captures the visible world orientation,
+including the existing local rotation, before stock grab dispatch. It then
+converts each hand rotation against the parent's **applied compositor pose**.
+Reform proposals no longer stand in for that pose: a proposal and its applied
+transform can arrive at different times. An owned same-node listener reconciles
+parent updates on the caption's looper, including updates arriving just after
+release. This handoff expires 150 ms after the last hand sample, so stale input
+cannot keep controlling a window. Sliders, reset, cancellation and shutdown
+stop the handoff; shutdown also closes the listener and its node reference.
+
+Host regressions cover 100 successive grabs in each side-lying direction with
+nonzero pitch and yaw, full wrist rotation, late parent updates, release,
+expiry and listener cleanup. Earlier headset checks confirmed current-angle
+grabs with 0.1.72. The 0.1.77 changes still need a physical headset test.
 
 New windows bind to their caption when the delayed caption hook runs. A window
 created earlier can receive hand samples without creating a rotation session.

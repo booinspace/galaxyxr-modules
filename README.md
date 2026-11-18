@@ -18,7 +18,7 @@ and angle. Both roll directions and stopping while tilted are confirmed on AZJ2;
 read the [install and workspace guide](modules/saved-workspaces/README.md).
 Built packages and checksums are published through GitHub Releases. This
 repository tracks source, documentation, tests and build scripts.
-Current source builds Window Controls 0.1.76 with Home passthrough blending,
+Current source builds Window Controls 0.1.77 with synchronized grab rotation, Home passthrough blending,
 Follow me grab alignment and diagnostic log retention fixes.
 
 Window Controls now includes **hand positional rotation**: grab a window to

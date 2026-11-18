@@ -55,13 +55,20 @@ public final class RotationMathTest {
         float[] handStart = RotationMath.orientation(10, 25, -5);
         float[] parentStart = RotationMath.orientation(0, 40, 0);
         float[] localStart = RotationMath.orientation(15, -10, 30);
-        float[] same = RotationMath.grabbed(handStart, handStart, parentStart, parentStart, localStart);
+        float[] worldStart = RotationMath.multiply(parentStart, localStart);
+        float[] same = RotationMath.grabbed(handStart, handStart, parentStart, worldStart);
         for (int i = 0; i < 4; i++) near(same[i], localStart[i]);
         float[] wrist = RotationMath.orientation(0, 0, 90);
         float[] parentNow = RotationMath.orientation(0, -25, 0);
-        float[] grabbed = RotationMath.grabbed(identity, wrist, identity, parentNow, identity);
+        float[] grabbed = RotationMath.grabbed(identity, wrist, parentNow, identity);
         float[] world = RotationMath.multiply(parentNow, grabbed);
         maps(world, new float[] {1, 0, 0}, new float[] {0, 1, 0});
+        for (int grab = 0; grab < 100; grab++) {
+            float[] local = RotationMath.grabbed(handStart, handStart, parentStart, worldStart);
+            worldStart = RotationMath.multiply(parentStart, local);
+        }
+        float[] expectedWorld = RotationMath.multiply(parentStart, localStart);
+        for (int i = 0; i < 4; i++) near(worldStart[i], expectedWorld[i]);
         int[] degrees = RotationMath.degrees(q);
         float[] recovered = RotationMath.orientation(degrees[0], degrees[1], degrees[2]);
         for (int i = 0; i < 4; i++) near(recovered[i], q[i]);

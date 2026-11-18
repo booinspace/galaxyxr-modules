@@ -7,6 +7,36 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = {
+    "kotlin/Unit.java": """package kotlin;
+public final class Unit { public static final Unit INSTANCE = new Unit(); }
+""",
+    "kotlin/jvm/functions/Function1.java": """package kotlin.jvm.functions;
+public interface Function1 { Object invoke(Object sample); }
+""",
+    "com/android/systemui/xr/spatial/CpmNodeTransformListenerFactory.java": """package com.android.systemui.xr.spatial;
+import android.graphics.CPM;
+import java.io.Closeable;
+import kotlin.jvm.functions.Function1;
+public final class CpmNodeTransformListenerFactory {
+    public static boolean failNextClose;
+    static final java.util.List<Listener> listeners = new java.util.ArrayList<>();
+    static final class Listener implements Closeable {
+        final CPM.Node node; final Function1 callback;
+        Listener(CPM.Node node, Function1 callback) { this.node=node; this.callback=callback; }
+        public void close() throws java.io.IOException {
+            if(failNextClose){failNextClose=false;throw new java.io.IOException("Listener cleanup failed");}
+            if(!listeners.remove(this))throw new AssertionError("Double close");
+        }
+    }
+    public Closeable create(CPM.Node node, Function1 callback) {
+        Listener result = new Listener(node,callback); listeners.add(result); return result;
+    }
+    public static void emit(CPM.Node node, CPM.NodeTransformUpdate update) {
+        for(Listener listener:new java.util.ArrayList<>(listeners))if(node.equals(listener.node))listener.callback.invoke(update);
+    }
+    public static int active() { return listeners.size(); }
+}
+""",
     "android/os/Looper.java": """package android.os;
 public final class Looper {
     private static final Looper OWNER = new Looper();
@@ -78,6 +108,9 @@ public final class XrCaptionWindowDecoration extends local.gxr.rotation.Rotation
 """,
     "android/graphics/CPM.java": """package android.graphics;
 public final class CPM {
+    public static final class NodeTransformUpdate {
+        public boolean attached; public float[] transform; public long timestamp;
+    }
     public static final class Node {
         public static Node copy;
         public static boolean wrongCopy;
@@ -99,8 +132,9 @@ public final class CPM {
     }
     public static final class NodeUpdates {
         public static float[] last;
+        public static int writes;
         public NodeUpdates setOrientation(Node node, float w, float x, float y, float z) {
-            node.getNativeHandle(); last = new float[] {w, x, y, z}; return this;
+            node.getNativeHandle(); writes++; last = new float[] {w, x, y, z}; return this;
         }
         public void apply() { }
         public void close() { }
@@ -138,6 +172,20 @@ public final class RotationControllerTest {
     public static final class State { public Boolean getValue() { return true; } }
     public static final class Transform {
         public final TransformFlow _spaceFlingerWorldFromNodeTransform = new TransformFlow();
+        public final CPM.Node node = new CPM.Node(420);
+        long stamp;
+        public CPM.Node getNode() { return node; }
+        void pose(float[] q) {
+            float w=q[0],x=q[1],y=q[2],z=q[3];
+            float[] m = {2*(1-2*(y*y+z*z)),4*(x*y+z*w),4*(x*z-y*w),0,
+                6*(x*y-z*w),3*(1-2*(x*x+z*z)),6*(y*z+x*w),0,
+                8*(x*z+y*w),8*(y*z-x*w),4*(1-2*(x*x+y*y)),0,4,1,-3,1};
+            java.util.List<Float> values = new java.util.ArrayList<>(); for(float v:m)values.add(v);
+            _spaceFlingerWorldFromNodeTransform.matrix = values;
+            CPM.NodeTransformUpdate update = new CPM.NodeTransformUpdate();
+            update.attached = true; update.transform = m; update.timestamp = ++stamp;
+            com.android.systemui.xr.spatial.CpmNodeTransformListenerFactory.emit(node,update);
+        }
     }
     public static final class TransformFlow {
         java.util.List<Float> matrix = java.util.Arrays.asList(1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f);
@@ -182,6 +230,10 @@ public final class RotationControllerTest {
         void stop() { controller.shutdown(); Handler.runDue(); }
     }
     private static void check(boolean value) { if (!value) throw new AssertionError(); }
+    private static void same(float[] a, float[] b) {
+        float dot = 0; for (int i = 0; i < 4; i++) dot += a[i] * b[i];
+        check(Math.abs(Math.abs(dot) - 1) < .00001f);
+    }
     private static void identity() {
         float[] q = CPM.NodeUpdates.last;
         check(q[0] == 1 && q[1] == 0 && q[2] == 0 && q[3] == 0);
@@ -262,15 +314,15 @@ public final class RotationControllerTest {
         Object transform = grab.menu.parentDecor.taskSubspaceRepository.task.transform;
         float[] initial = RotationMath.orientation(0, 0, 0);
         float[] roll = RotationMath.orientation(0, 0, 90);
-        grab.controller.onGrab(transform, 7, 1, initial, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 7, 1, initial, initial, SystemClock.now);
         Handler.runDue();
         check(grab.controller.getStatus().contains("grab=not-bound"));
         controls = grab.attach();
         check(grab.controller.getStatus().contains("bindings=1"));
         grab.menu.moreActionsPill.view.attached = false;
-        grab.controller.onGrab(transform, 7, 1, initial, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 7, 1, initial, initial, SystemClock.now);
         Handler.runDue();
-        grab.controller.onGrab(transform, 7, 2, roll, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 7, 2, roll, initial, SystemClock.now);
         Handler.runDue();
         check(Math.abs(CPM.NodeUpdates.last[3] - .70710677f) < .00001f);
         check(grab.menu.parentDecor.relayoutResult.mRootView.posts > 0);
@@ -278,16 +330,16 @@ public final class RotationControllerTest {
         grab.menu.moreActionsPill.view.attached = true;
         controls = grab.attach();
         check(controls.session.angles[2] == 90);
-        grab.controller.onGrab(transform, 7, 3, roll, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 7, 3, roll, initial, SystemClock.now);
         Handler.runDue();
-        grab.controller.onGrab(transform, 7, 2, initial, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 7, 2, initial, initial, SystemClock.now);
         Handler.runDue();
         check(controls.session.angles[2] == 90);
         grab.controller.setGrabEnabled(false); Handler.runDue();
         controls.session.set(2, 20);
         check(controls.session.angles[2] == 20);
-        grab.controller.onGrab(transform, 8, 1, initial, initial, initial, SystemClock.now);
-        grab.controller.onGrab(transform, 8, 2, roll, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 8, 1, initial, initial, SystemClock.now);
+        grab.controller.onGrab(transform, 8, 2, roll, initial, SystemClock.now);
         Handler.runDue();
         check(controls.session.angles[2] == 20);
         grab.controller.setEnabled(false); Handler.runDue(); identity();
@@ -301,7 +353,7 @@ public final class RotationControllerTest {
         check(pin.attach() == null && pin.controller.getBoundTaskIds().length == 0);
         pin.controller.setGrabEnabled(true);
         transform = pin.menu.parentDecor.taskSubspaceRepository.task.transform;
-        pin.controller.onGrab(transform, 9, 1, initial, initial, initial, SystemClock.now);
+        pin.controller.onGrab(transform, 9, 1, initial, initial, SystemClock.now);
         Handler.runDue();
         check(pin.controller.getStatus().contains("sessions=0"));
         int[] pins = {42};
@@ -311,20 +363,20 @@ public final class RotationControllerTest {
         for (int axis = 0; axis < 3; axis++) controls.session.set(axis, 30);
         check(controls.session.angles[0] == 30 && controls.session.angles[1] == 30 && controls.session.angles[2] == 30);
         controls.session.reset();
-        pin.controller.onGrab(transform, 9, 1, initial, initial, initial, SystemClock.now);
+        pin.controller.onGrab(transform, 9, 1, initial, initial, SystemClock.now);
         Handler.runDue();
         float[] tilted = RotationMath.orientation(25, -40, 60);
-        pin.controller.onGrab(transform, 9, 2, tilted, initial, initial, SystemClock.now);
+        pin.controller.onGrab(transform, 9, 2, tilted, initial, SystemClock.now);
         Handler.runDue();
         check(pin.controller.getStatus().contains("grab=applied"));
         for (int i = 0; i < 4; i++) check(Math.abs(CPM.NodeUpdates.last[i] - tilted[i]) < .00001f);
-        pin.controller.onGrab(transform, 9, 3, tilted, initial, initial, SystemClock.now);
+        pin.controller.onGrab(transform, 9, 3, tilted, initial, SystemClock.now);
         Handler.runDue();
         pin.controller.pulse(false, new int[] {42});
         SystemClock.now += 500; Handler.runDue();
         check(!controls.closed);
         for (int i = 0; i < 4; i++) check(Math.abs(CPM.NodeUpdates.last[i] - tilted[i]) < .00001f);
-        pin.controller.onGrab(transform, 10, 1, initial, initial, initial, SystemClock.now);
+        pin.controller.onGrab(transform, 10, 1, initial, initial, SystemClock.now);
         pin.controller.pulse(false, new int[0]);
         Handler.runDue(); check(!pin.controller.getStatus().contains("grab=started"));
         SystemClock.now += 500; Handler.runDue(); identity(); check(controls.closed);
@@ -335,21 +387,60 @@ public final class RotationControllerTest {
             controls.session.set(2, 20);
             followed.controller.setGrabEnabled(true);
             Transform actual = followed.menu.parentDecor.taskSubspaceRepository.task.transform;
-            actual._spaceFlingerWorldFromNodeTransform.matrix = java.util.Arrays.asList(
-                    0f, direction*2f, 0f, 0f, -direction*2f, 0f, 0f, 0f, 0f, 0f, 2f, 0f, 4f, 1f, -3f, 1f);
-            float[] basis = followed.controller.parentOrientation(actual);
-            float[] stock = RotationMath.orientation(0, 35, 0);
-            float[] before = RotationMath.multiply(basis, controls.session.orientation);
-            followed.controller.onGrab(actual, 20, 1, initial, stock, basis, SystemClock.now);
-            Handler.runDue();
-            float[] kept = RotationMath.multiply(stock, CPM.NodeUpdates.last);
-            for (int i = 0; i < 4; i++) check(Math.abs(kept[i]-before[i]) < .00001f);
+            float[] basis = RotationMath.orientation(10, 35, direction * 90);
+            actual.pose(basis);
+            float[] before = followed.controller.grabOrientation(actual);
+            int beforeGrabs = CPM.NodeUpdates.writes;
+            for (int repeat = 0; repeat < 100; repeat++) {
+                float[] start = followed.controller.grabOrientation(actual);
+                followed.controller.onGrab(actual, repeat, 1, initial, start, SystemClock.now);
+                Handler.runDue();
+                same(RotationMath.multiply(basis, CPM.NodeUpdates.last), before);
+                followed.controller.onGrab(actual, repeat, 3, initial, start, SystemClock.now);
+                Handler.runDue();
+                same(RotationMath.multiply(basis, CPM.NodeUpdates.last), before);
+            }
+            check(CPM.NodeUpdates.writes == beforeGrabs);
+            // Native movement can land after the hand callback and even after release.
             float[] wristDelta = RotationMath.orientation(15, -20, 30);
-            followed.controller.onGrab(actual, 20, 2, wristDelta, initial, basis, SystemClock.now);
+            float[] start = followed.controller.grabOrientation(actual);
+            followed.controller.onGrab(actual, 120, 1, initial, start, SystemClock.now);
             Handler.runDue();
+            followed.controller.onGrab(actual, 120, 2, wristDelta, start, SystemClock.now);
+            Handler.runDue();
+            float[] stock = RotationMath.orientation(-25, 65, -30);
+            actual.pose(stock); Handler.runDue();
             float[] expected = RotationMath.multiply(wristDelta, before);
-            for (int i = 0; i < 4; i++) check(Math.abs(CPM.NodeUpdates.last[i]-expected[i]) < .00001f);
-            followed.stop();check(followed.controller.isRestored());
+            same(RotationMath.multiply(stock, CPM.NodeUpdates.last), expected);
+            float[] releaseWrist = RotationMath.orientation(-20, 55, -70);
+            followed.controller.onGrab(actual, 120, 3, releaseWrist, start, SystemClock.now);
+            Handler.runDue();
+            expected = RotationMath.multiply(releaseWrist, before);
+            same(RotationMath.multiply(stock, CPM.NodeUpdates.last), expected);
+            float[] finalParent = RotationMath.orientation(40, -35, 50);
+            actual.pose(finalParent); Handler.runDue();
+            same(RotationMath.multiply(finalParent, CPM.NodeUpdates.last), expected);
+            float[] finalLocal = CPM.NodeUpdates.last.clone();
+            CPM.NodeTransformUpdate older = new CPM.NodeTransformUpdate();
+            older.attached = true; older.timestamp = 1; older.transform = new float[16];
+            com.android.systemui.xr.spatial.CpmNodeTransformListenerFactory.emit(actual.node,older);
+            Handler.runDue(); same(CPM.NodeUpdates.last, finalLocal);
+            // Following resumes after the bounded release handoff; slider edits cancel it immediately.
+            controls.session.set(2, 45);
+            float[] edited = CPM.NodeUpdates.last.clone();
+            actual.pose(initial); Handler.runDue(); same(CPM.NodeUpdates.last, edited);
+            start = followed.controller.grabOrientation(actual);
+            followed.controller.onGrab(actual, 121, 1, initial, start, SystemClock.now);
+            Handler.runDue();
+            followed.controller.onGrab(actual, 121, 3, wristDelta, start, SystemClock.now);
+            Handler.runDue();
+            float[] released = CPM.NodeUpdates.last.clone();
+            SystemClock.now += 151;
+            actual.pose(stock); Handler.runDue(); same(CPM.NodeUpdates.last, released);
+            com.android.systemui.xr.spatial.CpmNodeTransformListenerFactory.failNextClose = true;
+            followed.stop();check(!followed.controller.isRestored());
+            SystemClock.now += 500; Handler.runDue();check(followed.controller.isRestored());
+            check(com.android.systemui.xr.spatial.CpmNodeTransformListenerFactory.active() == 0);
         }
         Fixture invalidPin = new Fixture();
         for (int[] invalid : new int[][] {null, {0}, {-1}, new int[9]}) {
@@ -368,9 +459,9 @@ public final class RotationControllerTest {
         check(restoredCaption.controller.getBoundTaskIds().length == 1);
         restoredCaption.controller.setGrabEnabled(true);
         transform = captionDecor.taskSubspaceRepository.task.transform;
-        restoredCaption.controller.onGrab(transform, 17, 1, initial, initial, initial, SystemClock.now);
+        restoredCaption.controller.onGrab(transform, 17, 1, initial, initial, SystemClock.now);
         Handler.runDue();
-        restoredCaption.controller.onGrab(transform, 17, 2, roll, initial, initial, SystemClock.now);
+        restoredCaption.controller.onGrab(transform, 17, 2, roll, initial, SystemClock.now);
         Handler.runDue();
         check(restoredCaption.controller.getStatus().contains("grab=applied"));
         check(Math.abs(CPM.NodeUpdates.last[3] - .70710677f) < .00001f);

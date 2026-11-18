@@ -66,11 +66,11 @@ public final class RotationMath {
         return normalize(new float[]{(float)w,(float)x,(float)y,(float)z});
     }
 
-    /** Keeps the grabbed world orientation independent of stock parent-facing updates. */
-    public static float[] grabbed(float[] handStart, float[] handNow, float[] parentStart,
-            float[] parentNow, float[] localStart) {
+    /** Converts the hand's world-space delta to the actual compositor parent's local frame. */
+    public static float[] grabbed(float[] handStart, float[] handNow, float[] parentNow,
+            float[] worldStart) {
         float[] delta = multiply(handNow, inverse(handStart));
-        return multiply(inverse(parentNow), multiply(delta, multiply(parentStart, localStart)));
+        return multiply(inverse(parentNow), multiply(delta, worldStart));
     }
 
     /** Converts the stored quaternion to the menu's Y * X * Z Euler convention. */
